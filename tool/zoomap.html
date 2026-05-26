@@ -1413,32 +1413,71 @@ function switchView(v){
 // ════════════════════════════════════════════════════════════════════
 // IMAGE PAN / ZOOM / TAP-TO-PLACE
 // ════════════════════════════════════════════════════════════════════
+// Drag-vs-tap intent detection.
+//
+// The image map is now densely covered by circular pins. If we short-circuit the
+// pan handler whenever a press lands on a pin, the user can barely drag the map
+// at all. Instead we capture EVERY press (pin or not), and at release decide:
+//   - moved >  TAP_THRESH px  →  it was a pan: suppress any pending pin tap
+//   - moved <= TAP_THRESH px  →  it was a tap: forward to whatever was under the press
+//
+// `window._mapDragMoved` is the bridge to the pin click handlers — they check it
+// and bail when set. The flag is cleared a few ms after release so the synthetic
+// click that fires AFTER mouseup (on desktop) still sees it.
+const TAP_THRESH = 8;   // px
+const TAP_TIME   = 400; // ms
+
 function setupImagePan(){
   const wrap=document.getElementById('image-canvas-wrap');
   const stage=document.getElementById('image-stage');
-  let drag=false,lx=0,ly=0,tapT=0;
-  let pinchOn=false,pDist=0,pMx=0,pMy=0;
+  let drag=false, moved=false, startX=0, startY=0, lx=0, ly=0, tapT=0, pressTarget=null;
+  let pinchOn=false, pDist=0, pMx=0, pMy=0;
 
   function applyT(){ stage.style.transform=`translate(${imgT.x}px,${imgT.y}px) scale(${imgT.scale})`; }
+
+  function pressStart(x, y, target){
+    drag=true; moved=false; startX=lx=x; startY=ly=y; tapT=Date.now(); pressTarget=target;
+    window._mapDragMoved=false;
+  }
+  function pressMove(x, y){
+    if(!drag) return;
+    if(!moved && Math.hypot(x-startX, y-startY) > TAP_THRESH){
+      moved=true; wrap.classList.add('grabbing');
+    }
+    if(moved){
+      imgT.x += x-lx; imgT.y += y-ly; applyT();
+    }
+    lx=x; ly=y;
+  }
+  function pressEnd(endX, endY, viaTouch){
+    if(!drag) return;
+    drag=false; wrap.classList.remove('grabbing');
+    const wasTap = !moved && Date.now()-tapT < TAP_TIME;
+    const pinning = (placingPin||placingPoiPin) && pinMode==='image';
+    if(wasTap && pinning){
+      handleImgTap({clientX:endX, clientY:endY});
+    } else if(wasTap && viaTouch && pressTarget){
+      // Touch path: native click is suppressed by our preventDefault, so dispatch manually
+      const pin = pressTarget.closest && pressTarget.closest('.map-pin, .poi-pin');
+      if(pin) pin.click();
+    }
+    if(moved){
+      // Block the synthetic click that fires AFTER mouseup on desktop
+      window._mapDragMoved = true;
+      setTimeout(()=>{ window._mapDragMoved=false; }, 80);
+    }
+    pressTarget=null;
+  }
 
   // ── Mouse ──
   wrap.addEventListener('mousedown',e=>{
     if(e.button!==0) return;
-    // Don't preventDefault if clicking a pin — that would block the click event on child pins
-    if(e.target.closest('.map-pin')) return;
-    tapT=Date.now(); drag=true; lx=e.clientX; ly=e.clientY;
-    wrap.classList.add('grabbing'); e.preventDefault();
+    pressStart(e.clientX, e.clientY, e.target);
+    e.preventDefault();
   });
-  window.addEventListener('mousemove',e=>{
-    if(!drag) return;
-    imgT.x+=e.clientX-lx; imgT.y+=e.clientY-ly;
-    lx=e.clientX; ly=e.clientY; applyT();
-  });
-  window.addEventListener('mouseup',e=>{
-    if(!drag) return; drag=false; wrap.classList.remove('grabbing');
-    const pinning=(placingPin||placingPoiPin)&&pinMode==='image';
-    if(pinning&&Date.now()-tapT<260) handleImgTap(e);
-  });
+  window.addEventListener('mousemove',e=>{ pressMove(e.clientX, e.clientY); });
+  window.addEventListener('mouseup',  e=>{ pressEnd(e.clientX, e.clientY, false); });
+
   wrap.addEventListener('wheel',e=>{
     e.preventDefault();
     const f=e.deltaY>0?0.9:1.1;
@@ -1450,13 +1489,11 @@ function setupImagePan(){
 
   // ── Touch ──
   wrap.addEventListener('touchstart',e=>{
-    // Allow native click to fire on pins when not in placement mode
-    if(e.target.closest('.map-pin,.poi-pin')&&e.touches.length===1&&!placingPin&&!placingPoiPin) return;
-    tapT=Date.now();
-    if(e.touches.length===1){ drag=true; lx=e.touches[0].clientX; ly=e.touches[0].clientY; }
-    else if(e.touches.length===2){
-      drag=false; pinchOn=true;
-      pDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    if(e.touches.length===1){
+      pressStart(e.touches[0].clientX, e.touches[0].clientY, e.target);
+    } else if(e.touches.length===2){
+      drag=false; moved=false; pinchOn=true;
+      pDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
       pMx=(e.touches[0].clientX+e.touches[1].clientX)/2;
       pMy=(e.touches[0].clientY+e.touches[1].clientY)/2;
     }
@@ -1464,19 +1501,18 @@ function setupImagePan(){
   },{passive:false});
 
   wrap.addEventListener('touchmove',e=>{
-    if(e.touches.length===1&&drag){
-      imgT.x+=e.touches[0].clientX-lx; imgT.y+=e.touches[0].clientY-ly;
-      lx=e.touches[0].clientX; ly=e.touches[0].clientY; applyT();
-    } else if(e.touches.length===2&&pinchOn){
-      const dist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    if(e.touches.length===1 && drag){
+      pressMove(e.touches[0].clientX, e.touches[0].clientY);
+    } else if(e.touches.length===2 && pinchOn){
+      const dist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
       const mx=(e.touches[0].clientX+e.touches[1].clientX)/2;
       const my=(e.touches[0].clientY+e.touches[1].clientY)/2;
       const f=dist/pDist;
       const r=wrap.getBoundingClientRect();
-      const ox=mx-r.left,oy=my-r.top;
+      const ox=mx-r.left, oy=my-r.top;
       imgT.x=ox-(ox-imgT.x)*f+(mx-pMx);
       imgT.y=oy-(oy-imgT.y)*f+(my-pMy);
-      imgT.scale=Math.max(0.15,Math.min(10,imgT.scale*f));
+      imgT.scale=Math.max(0.15, Math.min(10, imgT.scale*f));
       pDist=dist; pMx=mx; pMy=my; applyT();
     }
     e.preventDefault();
@@ -1485,10 +1521,8 @@ function setupImagePan(){
   wrap.addEventListener('touchend',e=>{
     if(e.touches.length<2) pinchOn=false;
     if(e.touches.length===0){
-      const pinning=(placingPin||placingPoiPin)&&pinMode==='image';
-      if(drag&&pinning&&Date.now()-tapT<260)
-        handleImgTap(e.changedTouches[0]);
-      drag=false;
+      const t=e.changedTouches[0];
+      pressEnd(t.clientX, t.clientY, true);
     }
   });
 }
@@ -1871,6 +1905,7 @@ function renderImgPins(){
     pin.innerHTML=pinSvgImage(enc)+(cfg.showLabels!==false?`<div class="pin-label">${encName(enc)}</div>`:'');
     pin.addEventListener('click',e=>{
       e.stopPropagation();
+      if(window._mapDragMoved) return;   // suppress click if user was panning
       if(placingPin) return;
       openEncPopup(idx);
     });
@@ -3441,7 +3476,7 @@ function renderPoiImgPins(){
     pin.className='poi-pin poi-pin-img';
     pin.style.left=px+'%'; pin.style.top=py+'%';
     pin.innerHTML=poiSvgImage(cat)+(cfg.showLabels!==false?`<div class="pin-label">${poiName(poi)}</div>`:'');
-    pin.addEventListener('click',e=>{ e.stopPropagation(); if(!placingPin&&!placingPoiPin) openPoiPopup(idx); });
+    pin.addEventListener('click',e=>{ e.stopPropagation(); if(window._mapDragMoved) return; if(!placingPin&&!placingPoiPin) openPoiPopup(idx); });
     con.appendChild(pin);
   });
 }
@@ -4279,25 +4314,53 @@ function switchView(v){
 }
 
 // ── Image pan/zoom ──
+// Drag-vs-tap intent detection. Press always starts pan tracking; on release we
+// decide tap vs pan based on movement. window._mapDragMoved bridges to the pin
+// click handlers so they can ignore the synthetic click that fires after a pan.
 function setupImagePan(){
-  const wrap = document.getElementById('image-canvas-wrap');
+  const wrap  = document.getElementById('image-canvas-wrap');
   const stage = document.getElementById('image-stage');
-  let drag=false, lx=0, ly=0;
+  const TAP_THRESH = 8;
+  const TAP_TIME   = 400;
+  let drag=false, moved=false, startX=0, startY=0, lx=0, ly=0, tapT=0, pressTarget=null;
   let pinchOn=false, pDist=0, pMx=0, pMy=0;
   function applyT(){ stage.style.transform = 'translate(' + imgT.x + 'px,' + imgT.y + 'px) scale(' + imgT.scale + ')'; }
 
+  function pressStart(x, y, target){
+    drag=true; moved=false; startX=lx=x; startY=ly=y; tapT=Date.now(); pressTarget=target;
+    window._mapDragMoved=false;
+  }
+  function pressMove(x, y){
+    if(!drag) return;
+    if(!moved && Math.hypot(x-startX, y-startY) > TAP_THRESH){
+      moved=true; wrap.classList.add('grabbing');
+    }
+    if(moved){ imgT.x += x-lx; imgT.y += y-ly; applyT(); }
+    lx=x; ly=y;
+  }
+  function pressEnd(endX, endY, viaTouch){
+    if(!drag) return;
+    drag=false; wrap.classList.remove('grabbing');
+    const wasTap = !moved && Date.now()-tapT < TAP_TIME;
+    if(wasTap && viaTouch && pressTarget){
+      const pin = pressTarget.closest && pressTarget.closest('.map-pin, .poi-pin');
+      if(pin) pin.click();
+    }
+    if(moved){
+      window._mapDragMoved = true;
+      setTimeout(function(){ window._mapDragMoved=false; }, 80);
+    }
+    pressTarget=null;
+  }
+
   wrap.addEventListener('mousedown', e=>{
     if(e.button!==0) return;
-    if(e.target.closest('.map-pin,.poi-pin')) return;
-    drag=true; lx=e.clientX; ly=e.clientY;
-    wrap.classList.add('grabbing'); e.preventDefault();
+    pressStart(e.clientX, e.clientY, e.target);
+    e.preventDefault();
   });
-  window.addEventListener('mousemove', e=>{
-    if(!drag) return;
-    imgT.x += e.clientX - lx; imgT.y += e.clientY - ly;
-    lx=e.clientX; ly=e.clientY; applyT();
-  });
-  window.addEventListener('mouseup', ()=>{ drag=false; wrap.classList.remove('grabbing'); });
+  window.addEventListener('mousemove', e=>{ pressMove(e.clientX, e.clientY); });
+  window.addEventListener('mouseup',   e=>{ pressEnd(e.clientX, e.clientY, false); });
+
   wrap.addEventListener('wheel', e=>{
     e.preventDefault();
     const f = e.deltaY>0 ? 0.9 : 1.1;
@@ -4310,11 +4373,10 @@ function setupImagePan(){
   }, {passive:false});
 
   wrap.addEventListener('touchstart', e=>{
-    if(e.target.closest('.map-pin,.poi-pin') && e.touches.length===1) return;
     if(e.touches.length===1){
-      drag=true; lx=e.touches[0].clientX; ly=e.touches[0].clientY;
+      pressStart(e.touches[0].clientX, e.touches[0].clientY, e.target);
     } else if(e.touches.length===2){
-      drag=false; pinchOn=true;
+      drag=false; moved=false; pinchOn=true;
       pDist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
       pMx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
       pMy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
@@ -4323,8 +4385,7 @@ function setupImagePan(){
   }, {passive:false});
   wrap.addEventListener('touchmove', e=>{
     if(e.touches.length===1 && drag){
-      imgT.x += e.touches[0].clientX - lx; imgT.y += e.touches[0].clientY - ly;
-      lx = e.touches[0].clientX; ly = e.touches[0].clientY; applyT();
+      pressMove(e.touches[0].clientX, e.touches[0].clientY);
     } else if(e.touches.length===2 && pinchOn){
       const dist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
       const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
@@ -4340,8 +4401,12 @@ function setupImagePan(){
     e.preventDefault();
   }, {passive:false});
   wrap.addEventListener('touchend', e=>{
-    if(e.touches.length===0){ drag=false; pinchOn=false; }
-  }, {passive:true});
+    if(e.touches.length<2) pinchOn=false;
+    if(e.touches.length===0){
+      const t=e.changedTouches[0];
+      pressEnd(t.clientX, t.clientY, true);
+    }
+  });
 }
 
 // ── GPS → image percent (matches admin gpsToImgPercent) ──
@@ -4419,7 +4484,7 @@ function renderImgPins(){
     pin.style.left = px + '%';
     pin.style.top  = py + '%';
     pin.innerHTML = pinSvgImage(enc) + (cfg.showLabels!==false ? '<div class="pin-label">' + encName(enc) + '</div>' : '');
-    pin.addEventListener('click', e=>{ e.stopPropagation(); openEncPopup(idx); });
+    pin.addEventListener('click', e=>{ e.stopPropagation(); if(window._mapDragMoved) return; openEncPopup(idx); });
     con.appendChild(pin);
   });
 }
@@ -4441,7 +4506,7 @@ function renderPoiImgPins(){
     pin.style.left = px + '%';
     pin.style.top  = py + '%';
     pin.innerHTML = poiSvgImage(cat) + (cfg.showLabels!==false ? '<div class="pin-label">' + poiName(poi) + '</div>' : '');
-    pin.addEventListener('click', e=>{ e.stopPropagation(); openPoiPopup(idx); });
+    pin.addEventListener('click', e=>{ e.stopPropagation(); if(window._mapDragMoved) return; openPoiPopup(idx); });
     con.appendChild(pin);
   });
 }
