@@ -672,6 +672,21 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;top:-44px;left:
         <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-bottom:10px;line-height:1.5">
           Import overwrites existing enclosures with same ID. Download template for correct column format.
         </div>
+
+        <!-- Animals sub-row (CSV i/o for the animals belonging to each enclosure) -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 6px;padding-top:10px;border-top:1px dashed rgba(255,255,255,0.08)">
+          <div style="font-size:11px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.6px;font-weight:600">Animals (per enclosure)</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn-sm" onclick="document.getElementById('anim-csv-input').click()" title="Import animals CSV">📥 Import</button>
+            <button class="btn-sm" onclick="exportAnimalsCsv()">📤 Export</button>
+            <button class="btn-sm" onclick="downloadAnimCsvTemplate()">📋 Template</button>
+          </div>
+        </div>
+        <input type="file" id="anim-csv-input" accept=".csv,text/csv" style="display:none" onchange="importAnimalsCsv(event)">
+        <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-bottom:10px;line-height:1.5">
+          Keyed by <code style="background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px">enclosure_id</code>. Import replaces animals for the enclosures listed in the CSV.
+        </div>
+
         <div id="enc-list"></div>
 
         <!-- EDIT FORM -->
@@ -2707,7 +2722,15 @@ function addEnclosureForm(){
 function editEnclosure(idx){
   const enc=enclosures[idx];
   editingEncIdx=idx; currentEncImgData=enc.imgData||enc.imgUrl||null;
-  currentAnimalForms=(enc.animals||[]).map(a=>({...a}));
+  // Clone animals + backfill i18n[defaultLang] from legacy top-level name/traits
+  const dl = cfg.defaultLang || cfg.languages[0] || 'cs';
+  currentAnimalForms=(enc.animals||[]).map(a=>{
+    const copy = {...a, i18n: {...(a.i18n||{})}};
+    if(!copy.i18n[dl]) copy.i18n[dl] = {};
+    if(!copy.i18n[dl].name   && copy.name)   copy.i18n[dl].name   = copy.name;
+    if(!copy.i18n[dl].traits && copy.traits) copy.i18n[dl].traits = copy.traits;
+    return copy;
+  });
   document.getElementById('enc-form-title').textContent='Edit Enclosure';
   document.getElementById('enc-form-id').value=enc.id||'';
   document.getElementById('enc-form-species').value=enc.species||'';
@@ -2843,25 +2866,44 @@ function getAnimalSrc(a){ return a.imgData || a.imgUrl || null; }
 
 function buildAnimalForms(){
   const list=document.getElementById('animal-form-list'); list.innerHTML='';
+  const esc = s => (s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
   currentAnimalForms.forEach((a,ai)=>{
+    if(!a.i18n) a.i18n = {};
     const src=getAnimalSrc(a);
     const row=document.createElement('div'); row.className='animal-form-row';
+
+    // Lang pills row
+    const pills = cfg.languages.map((lang,li)=>
+      `<div class="lang-pill${li===0?' active':''}" data-anim-pill="${ai}" data-lang="${lang}" onclick="switchAnimalLang(${ai},'${lang}')">${LANG_NAMES[lang]||lang}</div>`
+    ).join('');
+
+    // Per-language Name + Traits panels (one visible at a time)
+    const panels = cfg.languages.map((lang,li)=>{
+      const ld = a.i18n[lang] || {};
+      const nameVal   = ld.name   || (lang===cfg.defaultLang ? a.name   : '') || '';
+      const traitsVal = ld.traits || (lang===cfg.defaultLang ? a.traits : '') || '';
+      return `<div class="lang-tab-content${li===0?' active':''}" id="anim-${ai}-lang-${lang}">
+        <input class="form-input" placeholder="Name (${LANG_NAMES[lang]||lang})" value="${esc(nameVal)}"
+          oninput="setAnimalI18n(${ai},'${lang}','name',this.value)">
+        <input class="form-input" placeholder="Distinctive traits (${LANG_NAMES[lang]||lang})" value="${esc(traitsVal)}" style="margin-top:6px"
+          oninput="setAnimalI18n(${ai},'${lang}','traits',this.value)">
+      </div>`;
+    }).join('');
+
     row.innerHTML=`
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div class="af-name">Animal ${ai+1}</div>
         <button class="btn-icon" onclick="removeAnimalForm(${ai})">✕</button>
       </div>
-      <div class="form-label">Name</div>
-      <input class="form-input" value="${(a.name||'').replace(/"/g,'&quot;')}" oninput="currentAnimalForms[${ai}].name=this.value">
-      <div class="form-label" style="margin-top:4px">Age / Traits</div>
-      <div style="display:flex;gap:6px">
-        <input class="form-input" placeholder="Age" value="${(a.age||'').replace(/"/g,'&quot;')}" style="width:80px" oninput="currentAnimalForms[${ai}].age=this.value">
-        <input class="form-input" placeholder="Distinctive traits" value="${(a.traits||'').replace(/"/g,'&quot;')}" style="flex:1" oninput="currentAnimalForms[${ai}].traits=this.value">
-      </div>
-      <div class="form-label" style="margin-top:4px">Photo</div>
+      <div class="form-label">Age <span style="opacity:.4;font-size:10px">(not translated)</span></div>
+      <input class="form-input" placeholder="e.g. 12 years, juvenile" value="${esc(a.age)}" oninput="currentAnimalForms[${ai}].age=this.value">
+      <div class="form-label" style="margin-top:6px">Name &amp; Traits (per language)</div>
+      <div class="lang-pills">${pills}</div>
+      ${panels}
+      <div class="form-label" style="margin-top:6px">Photo</div>
       <div class="photo-input-row">
         <input class="form-input" type="url" placeholder="https://... photo URL"
-          value="${(a.imgUrl||'').replace(/"/g,'&quot;')}"
+          value="${esc(a.imgUrl)}"
           oninput="setAnimalPhotoUrl(${ai},this.value)">
         <div class="photo-actions">
           <button class="photo-upload-btn" onclick="document.getElementById('anim-img-${ai}').click()">📷 Upload</button>
@@ -2872,6 +2914,23 @@ function buildAnimalForms(){
       <input type="file" id="anim-img-${ai}" accept="image/*" style="display:none" onchange="handleAnimalImg(event,${ai})">`;
     list.appendChild(row);
   });
+}
+
+function switchAnimalLang(ai, lang){
+  document.querySelectorAll(`[data-anim-pill="${ai}"]`).forEach(p=>p.classList.toggle('active', p.dataset.lang===lang));
+  cfg.languages.forEach(l=>{
+    const d = document.getElementById(`anim-${ai}-lang-${l}`);
+    if(d) d.classList.toggle('active', l===lang);
+  });
+}
+
+function setAnimalI18n(ai, lang, field, value){
+  const a = currentAnimalForms[ai];
+  if(!a.i18n) a.i18n = {};
+  if(!a.i18n[lang]) a.i18n[lang] = {};
+  a.i18n[lang][field] = value;
+  // Keep top-level fallback in sync with the default language for legacy code paths
+  if(lang === (cfg.defaultLang || cfg.languages[0])) a[field] = value;
 }
 
 function saveEnclosure(){
@@ -4613,6 +4672,12 @@ function getPoiCsvHeaders(langs){
   return base;
 }
 
+function getAnimCsvHeaders(langs){
+  const base=['enclosure_id','age','img_url'];
+  langs.forEach(l=>{ base.push(`name_${l}`,`traits_${l}`); });
+  return base;
+}
+
 // Build all three CSV strings and return them — called lazily per file click
 function buildCsvData(){
   const langs=cfg.languages.length?cfg.languages:['cs','en','fr'];
@@ -4676,17 +4741,40 @@ function buildCsvData(){
     poiRows.push(poiHeaders.map(h=>csvCell(row[h]??'')));
   });
 
+  // ── Animals (per-enclosure) ──
+  const animHeaders = getAnimCsvHeaders(langs);
+  const animRows = [animHeaders];
+  // Two example animals for the lions enclosure
+  const animDemo = [
+    {enclosure_id:'lions', age:'8',  img_url:'',
+      names:{cs:'Lev (samec)',  en:'Male lion',   fr:'Lion (mâle)'},
+      traits:{cs:'Velká hříva, dominantní', en:'Large mane, dominant', fr:'Grande crinière, dominant'}},
+    {enclosure_id:'lions', age:'6',  img_url:'',
+      names:{cs:'Lvice',        en:'Lioness',     fr:'Lionne'},
+      traits:{cs:'Skvělá lovkyně', en:'Excellent hunter', fr:'Excellente chasseuse'}},
+    {enclosure_id:'giraffes', age:'12', img_url:'',
+      names:{cs:'Mara',         en:'Mara',        fr:'Mara'},
+      traits:{cs:'5,7 m vysoká · narozena v zoo', en:'5.7 m tall · born at the zoo', fr:'5,7 m de haut · née au zoo'}}
+  ];
+  animDemo.forEach(a=>{
+    const row={enclosure_id:a.enclosure_id,age:a.age,img_url:a.img_url};
+    langs.forEach(l=>{ row[`name_${l}`]=a.names[l]||''; row[`traits_${l}`]=a.traits[l]||''; });
+    animRows.push(animHeaders.map(h=>csvCell(row[h]??'')));
+  });
+
   const join=rows=>rows.map(r=>Array.isArray(r)?r.join(','):r).join('\r\n');
   return {
-    enc: join(encRows),
-    cat: join(catRows),
-    poi: join(poiRows)
+    enc:  join(encRows),
+    cat:  join(catRows),
+    poi:  join(poiRows),
+    anim: join(animRows)
   };
 }
 
-function downloadCsvTemplate(){ const {enc}=buildCsvData(); triggerDownload('1_enclosures_template.csv', enc, 'text/csv;charset=utf-8'); }
-function downloadCatCsvTemplate(){ const {cat}=buildCsvData(); triggerDownload('2_categories_template.csv', cat, 'text/csv;charset=utf-8'); }
-function downloadPoiCsvTemplate(){ const {poi}=buildCsvData(); triggerDownload('3_pois_template.csv', poi, 'text/csv;charset=utf-8'); }
+function downloadCsvTemplate(){    const {enc} =buildCsvData(); triggerDownload('1_enclosures_template.csv', enc,  'text/csv;charset=utf-8'); }
+function downloadCatCsvTemplate(){ const {cat} =buildCsvData(); triggerDownload('2_categories_template.csv', cat,  'text/csv;charset=utf-8'); }
+function downloadPoiCsvTemplate(){ const {poi} =buildCsvData(); triggerDownload('3_pois_template.csv',       poi,  'text/csv;charset=utf-8'); }
+function downloadAnimCsvTemplate(){const {anim}=buildCsvData(); triggerDownload('4_animals_template.csv',    anim, 'text/csv;charset=utf-8'); }
 
 function exportEnclosuresCsv(){
   const langs = cfg.languages && cfg.languages.length ? cfg.languages : ['en'];
@@ -4741,6 +4829,76 @@ function exportPoisCsv(){
     rows.push(headers.map(h => csvCell(r[h]??'')).join(','));
   });
   triggerDownload('pois_export.csv', rows.join('\r\n'), 'text/csv;charset=utf-8');
+}
+
+function exportAnimalsCsv(){
+  const langs = cfg.languages && cfg.languages.length ? cfg.languages : ['en'];
+  const headers = getAnimCsvHeaders(langs);
+  const rows = [headers.map(csvCell).join(',')];
+  const dl = cfg.defaultLang || langs[0];
+  enclosures.forEach(enc => {
+    (enc.animals||[]).forEach(a => {
+      const r = { enclosure_id: enc.id||'', age: a.age||'', img_url: a.imgUrl||'' };
+      langs.forEach(l => {
+        const i = (a.i18n && a.i18n[l]) || {};
+        r[`name_${l}`]   = i.name   || (l===dl ? (a.name  ||'') : '');
+        r[`traits_${l}`] = i.traits || (l===dl ? (a.traits||'') : '');
+      });
+      rows.push(headers.map(h => csvCell(r[h]??'')).join(','));
+    });
+  });
+  triggerDownload('animals_export.csv', rows.join('\r\n'), 'text/csv;charset=utf-8');
+}
+
+function importAnimalsCsv(e){
+  const file=e.target.files[0]; if(!file) return; e.target.value='';
+  if(!confirm('Replace all animals for any enclosure_id that appears in this CSV?\n(Animals belonging to enclosures NOT in the CSV are kept untouched.)')) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const rows=parseCsv(ev.target.result.replace(/^﻿/,''));
+      if(rows.length<2){ showToast('CSV is empty'); return; }
+      const headers=rows[0].map(h=>h.trim().toLowerCase());
+      const get=(row,col)=>{ const i=headers.indexOf(col); return i>=0?(row[i]||'').trim():''; };
+
+      const dl = cfg.defaultLang || cfg.languages[0] || 'cs';
+      const byEnc = {}; // enclosure_id → [animal, ...] in CSV order
+      for(let ri=1; ri<rows.length; ri++){
+        const row=rows[ri]; if(row.length<1) continue;
+        const encId=get(row,'enclosure_id'); if(!encId) continue;
+
+        const i18n = {};
+        cfg.languages.forEach(lang=>{
+          const nm = get(row,`name_${lang}`);
+          const tr = get(row,`traits_${lang}`);
+          if(nm || tr) i18n[lang] = {name:nm||'', traits:tr||''};
+        });
+        const animal = {
+          name:   i18n[dl]?.name   || '',
+          age:    get(row,'age'),
+          traits: i18n[dl]?.traits || '',
+          imgUrl: get(row,'img_url') || '',
+          imgData: null,
+          i18n
+        };
+        if(!byEnc[encId]) byEnc[encId] = [];
+        byEnc[encId].push(animal);
+      }
+
+      let touchedEncs=0, totalAnimals=0, unknownIds=[];
+      Object.entries(byEnc).forEach(([encId, animals])=>{
+        const enc = enclosures.find(e=>e.id===encId);
+        if(enc){ enc.animals = animals; touchedEncs++; totalAnimals += animals.length; }
+        else unknownIds.push(encId);
+      });
+
+      saveAll(); renderEncList();
+      let msg = `Animals: ${totalAnimals} loaded into ${touchedEncs} enclosures ✓`;
+      if(unknownIds.length) msg += ` · ${unknownIds.length} unknown enclosure_id skipped`;
+      showToast(msg);
+    } catch(err){ console.error(err); showToast('Import failed: '+err.message); }
+  };
+  reader.readAsText(file,'UTF-8');
 }
 
 function csvCell(v){
