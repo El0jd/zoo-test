@@ -44,13 +44,17 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--font-body);ba
 #image-canvas-wrap.pin-cursor{cursor:crosshair}
 #image-stage{position:absolute;transform-origin:0 0;will-change:transform}
 #zoo-image{display:block;max-width:none;user-select:none;pointer-events:none}
+#zoo-svg-host{display:none;user-select:none;pointer-events:none}
+#zoo-svg-host svg{display:block;max-width:none;user-select:none;pointer-events:none}
 #img-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;opacity:0.35;pointer-events:none}
 #img-placeholder .ph-icon{font-size:64px}
 #img-placeholder .ph-text{font-size:14px;color:var(--cream);text-align:center;line-height:1.5}
 
-/* ── PINS ── */
-.map-pin{position:absolute;transform:translate(-50%,-100%);cursor:pointer;z-index:100;transition:transform 0.12s}
-.map-pin:active{transform:translate(-50%,-100%) scale(0.88)}
+/* ── PINS ──
+   Image-map pins are centred on the click point (translate -50% -50%).
+   Leaflet/GPS pins use Leaflet's iconAnchor and are not affected by this. */
+.map-pin{position:absolute;transform:translate(-50%,-50%);cursor:pointer;z-index:100;transition:transform 0.12s}
+.map-pin:active{transform:translate(-50%,-50%) scale(0.88)}
 .pin-label{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,0.65);border-radius:4px;padding:1px 5px;white-space:nowrap;pointer-events:none}
 .map-pin.hidden-pin{opacity:0;pointer-events:none}
 .leaflet-pin-wrapper{position:relative;cursor:pointer}
@@ -362,6 +366,7 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;top:-44px;left:
     <div id="image-canvas-wrap">
       <div id="image-stage">
         <img id="zoo-image" src="" alt="" draggable="false">
+        <div id="zoo-svg-host"></div>
         <div id="img-pins-container"></div>
         <div id="user-dot-img" class="user-dot-wrap" style="display:none">
           <div id="user-dot-img-inner" class="user-dot"></div>
@@ -1346,12 +1351,21 @@ function applyConfig(){
   document.getElementById('gps-debug-toggle').classList.toggle('visible',!!cfg.showGpsDebug);
   // Apply invisible pins mode
   document.body.classList.toggle('invisible-pins', !!cfg.invisiblePins);
-  const imgEl=document.getElementById('zoo-image');
-  const ph=document.getElementById('img-placeholder');
-  if(cfg.mapImageData){
+  const imgEl  = document.getElementById('zoo-image');
+  const svgEl  = document.getElementById('zoo-svg-host');
+  const ph     = document.getElementById('img-placeholder');
+  if(cfg.mapImageSvg){
+    // Vector mode — inject inline SVG
+    imgEl.style.display='none';
+    if(injectMapSvg(cfg.mapImageSvg)){ svgEl.style.display='block'; ph.style.display='none'; }
+    else { svgEl.style.display='none'; ph.style.display='flex'; }
+  } else if(cfg.mapImageData){
+    svgEl.style.display='none'; svgEl.innerHTML='';
     imgEl.src=cfg.mapImageData; imgEl.style.display='block'; ph.style.display='none';
   } else {
-    imgEl.style.display='none'; ph.style.display='flex';
+    imgEl.style.display='none';
+    svgEl.style.display='none'; svgEl.innerHTML='';
+    ph.style.display='flex';
   }
 }
 
@@ -1480,12 +1494,11 @@ function setupImagePan(){
 
 function handleImgTap(e){
   const wrap=document.getElementById('image-canvas-wrap');
-  const img=document.getElementById('zoo-image');
   const r=wrap.getBoundingClientRect();
   const cx=(e.clientX-r.left-imgT.x)/imgT.scale;
   const cy=(e.clientY-r.top -imgT.y)/imgT.scale;
-  const W=Math.max(img.naturalWidth||img.offsetWidth,1);
-  const H=Math.max(img.naturalHeight||img.offsetHeight,1);
+  const sz=getMapImageSize();
+  const W=Math.max(sz.w,1), H=Math.max(sz.h,1);
   const px=+(cx/W*100).toFixed(2);
   const py=+(cy/H*100).toFixed(2);
   if(placingPoiPin){
@@ -1721,8 +1734,8 @@ function rescaleToView(){
   cfg.overlayGpsCenter=[cLat,cLng];
   const viewH=(b.getNorth()-b.getSouth())/2*(Math.PI/180)*EARTH_R;
   const viewW=(b.getEast()-b.getWest())/2*(Math.PI/180)*EARTH_R*Math.cos(cLat*Math.PI/180);
-  const img=document.getElementById('zoo-image');
-  const iw=img.naturalWidth||800, ih=img.naturalHeight||600;
+  const _sz=getMapImageSize();
+  const iw=_sz.w||800, ih=_sz.h||600;
   const aspect=iw/ih;
   if(viewW/viewH>aspect){ cfg.overlayMetersH=viewH*0.9; cfg.overlayMetersW=viewH*0.9*aspect; }
   else                   { cfg.overlayMetersW=viewW*0.9; cfg.overlayMetersH=viewW*0.9/aspect; }
@@ -1816,13 +1829,27 @@ function renderPins(){
   else renderImgPins();
 }
 
-function pinSVG(enc){
-  return`<svg width="36" height="44" viewBox="0 0 36 44" xmlns="http://www.w3.org/2000/svg">
+// Image-map pin: semi-transparent circle CENTRED on the click point.
+// The .map-pin CSS uses translate(-50%,-50%) so the click point = circle centre.
+function pinSvgImage(enc){
+  const c = encColor(enc);
+  return `<svg width="44" height="44" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="22" cy="22" r="20" fill="${c}" fill-opacity="0.35" stroke="${c}" stroke-opacity="0.7" stroke-width="1.5"/>
+    <text x="22" y="28" text-anchor="middle" font-size="18">${enc.emoji||'📍'}</text>
+  </svg>`;
+}
+
+// GPS-map pin: classic teardrop (tip = click point). Used by Leaflet markers.
+function pinSvgGps(enc){
+  return `<svg width="36" height="44" viewBox="0 0 36 44" xmlns="http://www.w3.org/2000/svg">
     <path d="M18 0C8.06 0 0 8.06 0 18c0 12.5 18 26 18 26S36 30.5 36 18C36 8.06 27.94 0 18 0z" fill="${encColor(enc)}"/>
     <circle cx="18" cy="18" r="10" fill="rgba(0,0,0,0.28)"/>
     <text x="18" y="23" text-anchor="middle" font-size="13">${enc.emoji||'📍'}</text>
   </svg>`;
 }
+
+// Back-compat alias — anywhere that still calls pinSVG() gets the teardrop (GPS) shape.
+function pinSVG(enc){ return pinSvgGps(enc); }
 
 function renderImgPins(){
   const con=document.getElementById('img-pins-container'); con.innerHTML='';
@@ -1840,7 +1867,7 @@ function renderImgPins(){
     const pin=document.createElement('div');
     pin.className='map-pin'+(cfg.showPins===false?' hidden-pin':'');
     pin.style.left=px+'%'; pin.style.top=py+'%';
-    pin.innerHTML=pinSVG(enc)+(cfg.showLabels!==false?`<div class="pin-label">${encName(enc)}</div>`:'');
+    pin.innerHTML=pinSvgImage(enc)+(cfg.showLabels!==false?`<div class="pin-label">${encName(enc)}</div>`:'');
     pin.addEventListener('click',e=>{
       e.stopPropagation();
       if(placingPin) return;
@@ -1889,7 +1916,7 @@ function renderMapPins(){
     if(!enc.gps||!enc.gps[0]) return;
     const lbl=cfg.showLabels!==false
       ?`<div style="position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,0.68);border-radius:4px;padding:1px 5px;white-space:nowrap;font-family:sans-serif">${encName(enc)}</div>`:'';
-    const icon=L.divIcon({html:`<div class="leaflet-pin-wrapper">${pinSVG(enc)}${lbl}</div>`,className:'',iconSize:[36,44],iconAnchor:[18,44]});
+    const icon=L.divIcon({html:`<div class="leaflet-pin-wrapper">${pinSvgGps(enc)}${lbl}</div>`,className:'',iconSize:[36,44],iconAnchor:[18,44]});
     const m=L.marker(enc.gps,{icon});
     if(cfg.showPins!==false) m.addTo(lMap);
     m.on('click',()=>{ if(!placingPin) openEncPopup(idx); });
@@ -2656,17 +2683,74 @@ function resetUiStringsForLang(){
 // ── MAP IMAGE ──
 function handleMapImageUpload(e){
   const file=e.target.files[0]; if(!file) return;
+  const isSvg = file.type === 'image/svg+xml' || /\.svg$/i.test(file.name);
   const r=new FileReader();
   r.onload=ev=>{
-    cfg.mapImageData=ev.target.result;
+    if(isSvg){
+      cfg.mapImageSvg  = ev.target.result;
+      cfg.mapImageData = null;
+    } else {
+      cfg.mapImageData = ev.target.result;
+      cfg.mapImageSvg  = null;
+    }
     if(!cfg.overlayGpsCenter){
       const c=lMap.getCenter(); cfg.overlayGpsCenter=[c.lat,c.lng];
     }
-    saveAll(); applyConfig(); showToast('Map image uploaded ✓');
+    saveAll(); applyConfig();
+    showToast(isSvg ? 'SVG map uploaded ✓ (vector mode)' : 'Map image uploaded ✓');
     // Refresh overlay if enabled
     if(cfg.overlayEnabled&&cfg.currentView==='gps') applyOverlayToMap();
+    renderPins(); renderPoiPins(); // re-position pins now that the image size changed
   };
-  r.readAsDataURL(file);
+  if(isSvg) r.readAsText(file);
+  else      r.readAsDataURL(file);
+}
+
+// Sanitize and inject an SVG string into the map host. Strips <script> tags and
+// inline event handlers. Ensures the root <svg> has explicit width/height so the
+// layout knows the natural size (needed for percent-based pin placement).
+function injectMapSvg(svgText){
+  const host = document.getElementById('zoo-svg-host');
+  if(!svgText){ host.innerHTML=''; return false; }
+  let docX;
+  try { docX = new DOMParser().parseFromString(svgText, 'image/svg+xml'); }
+  catch(e){ showToast('Invalid SVG'); return false; }
+  const root = docX && docX.documentElement;
+  if(!root || root.tagName.toLowerCase() !== 'svg'){
+    showToast('Not a valid SVG file'); return false;
+  }
+  // Strip script tags
+  docX.querySelectorAll('script').forEach(s => s.remove());
+  // Strip event-handler attributes (on*)
+  docX.querySelectorAll('*').forEach(el => {
+    [...el.attributes].forEach(attr => {
+      if(attr.name.toLowerCase().startsWith('on')) el.removeAttribute(attr.name);
+    });
+  });
+  // Backfill width/height from viewBox so layout has definite dimensions
+  if(!root.hasAttribute('width') || !root.hasAttribute('height')){
+    const vb = (root.getAttribute('viewBox')||'').split(/[ ,]+/).map(Number);
+    if(vb.length === 4 && vb[2] > 0 && vb[3] > 0){
+      if(!root.hasAttribute('width'))  root.setAttribute('width',  vb[2]);
+      if(!root.hasAttribute('height')) root.setAttribute('height', vb[3]);
+    }
+  }
+  host.innerHTML = root.outerHTML;
+  return true;
+}
+
+// Returns the natural (un-transformed) pixel size of whichever map source is active
+function getMapImageSize(){
+  if(cfg.mapImageSvg){
+    const svg = document.querySelector('#zoo-svg-host svg');
+    if(svg){
+      const w = parseFloat(svg.getAttribute('width'))  || (svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width)  || svg.getBoundingClientRect().width;
+      const h = parseFloat(svg.getAttribute('height')) || (svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.height) || svg.getBoundingClientRect().height;
+      return {w: w||800, h: h||600};
+    }
+  }
+  const img = document.getElementById('zoo-image');
+  return {w: img.naturalWidth || img.offsetWidth || 800, h: img.naturalHeight || img.offsetHeight || 600};
 }
 
 // ── DISPLAY ──
@@ -3672,11 +3756,13 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--font-body);ba
 #image-canvas-wrap.grabbing{cursor:grabbing}
 #image-stage{position:absolute;transform-origin:0 0;will-change:transform}
 #zoo-image{display:block;max-width:none;user-select:none;pointer-events:none}
+#zoo-svg-host{display:none;user-select:none;pointer-events:none}
+#zoo-svg-host svg{display:block;max-width:none;user-select:none;pointer-events:none}
 #img-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;opacity:.35;pointer-events:none}
 #img-placeholder .ph-icon{font-size:64px}
 #img-placeholder .ph-text{font-size:14px;text-align:center;line-height:1.5}
-.map-pin{position:absolute;transform:translate(-50%,-100%);cursor:pointer;z-index:100;transition:transform .12s}
-.map-pin:active{transform:translate(-50%,-100%) scale(.88)}
+.map-pin{position:absolute;transform:translate(-50%,-50%);cursor:pointer;z-index:100;transition:transform .12s}
+.map-pin:active{transform:translate(-50%,-50%) scale(.88)}
 .pin-label{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,.65);border-radius:4px;padding:1px 5px;white-space:nowrap;pointer-events:none}
 .map-pin.hidden-pin{opacity:0;pointer-events:none}
 .leaflet-pin-wrapper{position:relative;cursor:pointer}
@@ -3802,6 +3888,7 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;top:-44px;left:
     <div id="image-canvas-wrap">
       <div id="image-stage">
         <img id="zoo-image" src="" alt="" draggable="false">
+        <div id="zoo-svg-host"></div>
         <div id="img-pins-container"></div>
         <div id="user-dot-img" class="user-dot-wrap" style="display:none">
           <div id="user-dot-img-inner" class="user-dot"></div>
@@ -4060,13 +4147,60 @@ function applyConfig(){
   }
   document.body.classList.toggle('invisible-pins', !!cfg.invisiblePins);
   const imgEl = document.getElementById('zoo-image');
-  const ph = document.getElementById('img-placeholder');
-  if(cfg.mapImageData){
+  const svgEl = document.getElementById('zoo-svg-host');
+  const ph    = document.getElementById('img-placeholder');
+  if(cfg.mapImageSvg){
+    imgEl.style.display='none';
+    if(injectMapSvg(cfg.mapImageSvg)){ svgEl.style.display='block'; ph.style.display='none'; }
+    else { svgEl.style.display='none'; ph.style.display='flex'; }
+  } else if(cfg.mapImageData){
+    svgEl.style.display='none'; svgEl.innerHTML='';
     imgEl.src = cfg.mapImageData; imgEl.style.display='block'; ph.style.display='none';
   } else {
-    imgEl.style.display='none'; ph.style.display='flex';
+    imgEl.style.display='none';
+    svgEl.style.display='none'; svgEl.innerHTML='';
+    ph.style.display='flex';
   }
   applyUiTranslations();
+}
+
+// Sanitize and inject an SVG string into the map host. Strips <script> and on*.
+function injectMapSvg(svgText){
+  const host = document.getElementById('zoo-svg-host');
+  if(!svgText){ host.innerHTML=''; return false; }
+  let docX;
+  try { docX = new DOMParser().parseFromString(svgText, 'image/svg+xml'); } catch(e){ return false; }
+  const root = docX && docX.documentElement;
+  if(!root || root.tagName.toLowerCase() !== 'svg') return false;
+  docX.querySelectorAll('script').forEach(s => s.remove());
+  docX.querySelectorAll('*').forEach(el => {
+    [...el.attributes].forEach(attr => {
+      if(attr.name.toLowerCase().startsWith('on')) el.removeAttribute(attr.name);
+    });
+  });
+  if(!root.hasAttribute('width') || !root.hasAttribute('height')){
+    const vb = (root.getAttribute('viewBox')||'').split(/[ ,]+/).map(Number);
+    if(vb.length === 4 && vb[2] > 0 && vb[3] > 0){
+      if(!root.hasAttribute('width'))  root.setAttribute('width',  vb[2]);
+      if(!root.hasAttribute('height')) root.setAttribute('height', vb[3]);
+    }
+  }
+  host.innerHTML = root.outerHTML;
+  return true;
+}
+
+// Returns the natural pixel size of whichever map source is active
+function getMapImageSize(){
+  if(cfg.mapImageSvg){
+    const svg = document.querySelector('#zoo-svg-host svg');
+    if(svg){
+      const w = parseFloat(svg.getAttribute('width'))  || (svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width)  || svg.getBoundingClientRect().width;
+      const h = parseFloat(svg.getAttribute('height')) || (svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.height) || svg.getBoundingClientRect().height;
+      return {w: w||800, h: h||600};
+    }
+  }
+  const img = document.getElementById('zoo-image');
+  return {w: img.naturalWidth || img.offsetWidth || 800, h: img.naturalHeight || img.offsetHeight || 600};
 }
 
 function applyUiTranslations(){
@@ -4309,8 +4443,17 @@ function gpsToImgPercent(lat,lng){
   return {x,y};
 }
 
-// ── Pin SVG ──
-function pinSVG(enc){
+// ── Pin SVGs ──
+// Image-map pin: semi-transparent circle CENTRED on the click point.
+function pinSvgImage(enc){
+  const c = encColor(enc);
+  return '<svg width="44" height="44" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">'
+       + '<circle cx="22" cy="22" r="20" fill="' + c + '" fill-opacity="0.35" stroke="' + c + '" stroke-opacity="0.7" stroke-width="1.5"/>'
+       + '<text x="22" y="28" text-anchor="middle" font-size="18">' + (enc.emoji||'📍') + '</text>'
+       + '</svg>';
+}
+// GPS-map pin: classic teardrop. Used by Leaflet markers.
+function pinSvgGps(enc){
   return '<svg width="36" height="44" viewBox="0 0 36 44" xmlns="http://www.w3.org/2000/svg">'
        + '<path d="M18 0C8.06 0 0 8.06 0 18c0 12.5 18 26 18 26S36 30.5 36 18C36 8.06 27.94 0 18 0z" fill="' + encColor(enc) + '"/>'
        + '<circle cx="18" cy="18" r="10" fill="rgba(0,0,0,0.28)"/>'
@@ -4344,7 +4487,7 @@ function renderImgPins(){
     pin.className = 'map-pin' + (cfg.showPins===false ? ' hidden-pin' : '');
     pin.style.left = px + '%';
     pin.style.top  = py + '%';
-    pin.innerHTML = pinSVG(enc) + (cfg.showLabels!==false ? '<div class="pin-label">' + encName(enc) + '</div>' : '');
+    pin.innerHTML = pinSvgImage(enc) + (cfg.showLabels!==false ? '<div class="pin-label">' + encName(enc) + '</div>' : '');
     pin.addEventListener('click', e=>{ e.stopPropagation(); openEncPopup(idx); });
     con.appendChild(pin);
   });
@@ -4381,7 +4524,7 @@ function renderMapPins(){
       ? '<div style="position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,.68);border-radius:4px;padding:1px 5px;white-space:nowrap;font-family:sans-serif">' + encName(enc) + '</div>'
       : '';
     const icon = L.divIcon({
-      html: '<div class="leaflet-pin-wrapper">' + pinSVG(enc) + lbl + '</div>',
+      html: '<div class="leaflet-pin-wrapper">' + pinSvgGps(enc) + lbl + '</div>',
       className: '', iconSize: [36,44], iconAnchor: [18,44]
     });
     const m = L.marker(enc.gps, {icon});
