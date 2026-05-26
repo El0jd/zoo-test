@@ -532,6 +532,40 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;top:-44px;left:
           <input class="form-input" id="cfg-zoom" type="number" placeholder="17" min="10" max="22"></div>
         <button class="btn-primary" onclick="saveGeneralConfig()">Save General Settings</button>
 
+        <!-- THEME & COLORS (collapsible) -->
+        <details style="margin-top:18px;border-top:1px solid rgba(255,255,255,0.1);padding-top:14px">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--green-light);user-select:none;text-transform:uppercase;letter-spacing:0.8px">🎨 Theme &amp; Colours</summary>
+          <div style="margin-top:12px">
+            <div style="font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:12px;line-height:1.5">
+              Every coloured element of the tool maps to one of these slots. Pick a colour swatch or type a hex code — both stay in sync.
+            </div>
+            <div id="theme-rows"></div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="btn-primary" onclick="saveTheme()" style="flex:1">Save Theme</button>
+              <button class="btn-sm" onclick="resetTheme()" style="white-space:nowrap">↺ Reset</button>
+            </div>
+          </div>
+        </details>
+
+        <!-- BACKUP & RESTORE (collapsible) -->
+        <details style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.1);padding-top:14px">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--green-light);user-select:none;text-transform:uppercase;letter-spacing:0.8px">💾 Backup &amp; Restore</summary>
+          <div style="margin-top:12px">
+            <div style="font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:10px;line-height:1.5">
+              <b style="color:var(--cream)">Setup only:</b> colors, logo, languages, UI translations.<br>
+              <b style="color:var(--cream)">Full bundle:</b> setup + all enclosures, categories, POIs.
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+              <button class="btn-sm" onclick="exportSetupJson()">📤 Export Setup</button>
+              <button class="btn-sm" onclick="document.getElementById('setup-json-input').click()">📥 Import Setup</button>
+              <button class="btn-sm" onclick="exportFullBundle()" style="background:var(--amber-dark);color:#fff">📦 Export Full Bundle</button>
+              <button class="btn-sm" onclick="document.getElementById('bundle-json-input').click()" style="background:var(--amber-dark);color:#fff">📥 Import Bundle</button>
+            </div>
+            <input type="file" id="setup-json-input"  accept=".json,application/json" style="display:none" onchange="importSetupJson(event)">
+            <input type="file" id="bundle-json-input" accept=".json,application/json" style="display:none" onchange="importFullBundle(event)">
+          </div>
+        </details>
+
         <div style="margin-top:24px;border-top:1px solid rgba(255,255,255,0.1);padding-top:18px">
           <div class="setup-section-label">Publish</div>
           <div style="font-size:12px;color:rgba(255,255,255,0.45);line-height:1.55;margin-bottom:12px">
@@ -653,6 +687,17 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;top:-44px;left:
             <input class="form-input" id="enc-form-species" placeholder="African Lion"></div>
           <div><div class="form-label">Emoji Icon</div>
             <input class="form-input" id="enc-form-emoji" placeholder="🦁" maxlength="2"></div>
+
+          <div>
+            <div class="form-label">Pin Colour <span style="opacity:.4;font-size:10px">(blank = use general default)</span></div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input class="form-input" id="enc-form-color" placeholder="blank = default" style="flex:1">
+              <input type="color" id="enc-form-colorpicker" value="#2d6a4f"
+                oninput="document.getElementById('enc-form-color').value=this.value"
+                style="width:40px;height:40px;border:none;background:none;cursor:pointer;border-radius:8px;padding:2px">
+              <button class="btn-sm" onclick="document.getElementById('enc-form-color').value=''" title="Use general default" style="white-space:nowrap">↺ Default</button>
+            </div>
+          </div>
 
           <!-- GLOBAL FIELDS (same across all languages) -->
           <div>
@@ -1154,6 +1199,14 @@ const EARTH_R=6371000;
 // ════════════════════════════════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════════════════════════════════
+// Default theme palette — every coloured element of the tool maps to one of these
+const DEFAULT_THEME = Object.freeze({
+  greenDeep:'#1a3a2a', greenMid:'#2d6a4f', greenLight:'#52b788',
+  amber:'#f4a261',     amberDark:'#e76f51',
+  cream:'#fefae0',     dark:'#0d1f17',
+  defaultEncPinColor:'#2d6a4f'
+});
+
 let cfg={
   zooName:'Zoo Interactive',logoEmoji:'🦁',
   gpsCenter:[48.8566,2.3522],defaultZoom:17,
@@ -1167,7 +1220,9 @@ let cfg={
   // Layer visibility: keyed by category id + 'enclosures'. true=visible
   layerVisibility:{},
   // UI string overrides: { lang: { key: 'translated value' } } — only stores user customisations
-  uiStrings:{}
+  uiStrings:{},
+  // Theme palette — applied at runtime by setting CSS variables on :root
+  theme:{...DEFAULT_THEME}
 };
 let enclosures=[];
 let categories=[]; // [{id,emoji,color,i18n:{lang:{name}}}]
@@ -1212,6 +1267,9 @@ function loadAll(){
   try{ const e=bridgeLoad('enclosures'); if(e) enclosures=e; }catch(e){}
   try{ const c=bridgeLoad('categories'); if(c) categories=c; }catch(e){}
   try{ const p=bridgeLoad('pois');       if(p) pois=p; }catch(e){}
+  // Backfill theme for configs saved before theme support
+  if(!cfg.theme) cfg.theme = {...DEFAULT_THEME};
+  else cfg.theme = {...DEFAULT_THEME, ...cfg.theme};
 }
 function saveAll(){
   bridgeSave('config',     cfg);
@@ -1246,7 +1304,21 @@ function init(){
   renderFilterPanel();
 }
 
+function applyTheme(){
+  const th = cfg.theme || {};
+  const root = document.documentElement.style;
+  const set = (k,v) => { if(v) root.setProperty(k, v); };
+  set('--green-deep',  th.greenDeep);
+  set('--green-mid',   th.greenMid);
+  set('--green-light', th.greenLight);
+  set('--amber',       th.amber);
+  set('--amber-dark',  th.amberDark);
+  set('--cream',       th.cream);
+  set('--dark',        th.dark);
+}
+
 function applyConfig(){
+  applyTheme();
   const logoIcon=document.getElementById('logo-icon');
   if(cfg.logoImageData){ logoIcon.innerHTML=`<img src="${cfg.logoImageData}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">`; }
   else { logoIcon.textContent=cfg.logoEmoji||'🦁'; }
@@ -1731,7 +1803,7 @@ function renderPins(){
 
 function pinSVG(enc){
   return`<svg width="36" height="44" viewBox="0 0 36 44" xmlns="http://www.w3.org/2000/svg">
-    <path d="M18 0C8.06 0 0 8.06 0 18c0 12.5 18 26 18 26S36 30.5 36 18C36 8.06 27.94 0 18 0z" fill="${encColor(enc.species)}"/>
+    <path d="M18 0C8.06 0 0 8.06 0 18c0 12.5 18 26 18 26S36 30.5 36 18C36 8.06 27.94 0 18 0z" fill="${encColor(enc)}"/>
     <circle cx="18" cy="18" r="10" fill="rgba(0,0,0,0.28)"/>
     <text x="18" y="23" text-anchor="middle" font-size="13">${enc.emoji||'📍'}</text>
   </svg>`;
@@ -1810,16 +1882,9 @@ function renderMapPins(){
   });
 }
 
-function encColor(species){
-  if(!species) return '#2d6a4f';
-  const s=species.toLowerCase();
-  if(/lion|tiger|cheetah|leopard|puma/.test(s)) return '#e76f51';
-  if(/bird|parrot|eagle|flamingo|penguin|toucan/.test(s)) return '#457b9d';
-  if(/reptile|snake|croc|lizard|turtle|gecko/.test(s)) return '#606c38';
-  if(/elephant|rhino|hippo|giraffe|zebra/.test(s)) return '#6b4226';
-  if(/primate|monkey|gorilla|chimp|lemur/.test(s)) return '#7b5ea7';
-  if(/aquat|fish|shark|dolphin|seal|otter|ray/.test(s)) return '#1d7da1';
-  return '#2d6a4f';
+function encColor(enc){
+  if(enc && enc.color) return enc.color;
+  return (cfg.theme && cfg.theme.defaultEncPinColor) || '#2d6a4f';
 }
 
 function encName(enc){
@@ -2317,6 +2382,7 @@ function populateSetupForms(){
   document.getElementById('tog-gps-debug').checked=!!cfg.showGpsDebug;
   renderLangChips();
   buildUiStringsPanel();
+  buildThemeRows();
 }
 
 // ── GENERAL ──
@@ -2345,6 +2411,126 @@ function removeLogoImage(){
   const lt=document.getElementById('logo-img-thumb'), lr=document.getElementById('logo-img-remove');
   lt.src=''; lt.classList.remove('visible'); lr.style.display='none';
   saveAll(); applyConfig();
+}
+
+// ── THEME ──
+// Order matters here: this is the order shown in the General → Theme & Colours panel.
+const THEME_FIELDS = [
+  {key:'greenDeep',          label:'Panel background',     hint:'Setup overlay, sheets'},
+  {key:'greenMid',            label:'Primary green',        hint:'Logo background, buttons, locate'},
+  {key:'greenLight',          label:'Accent green',         hint:'Active tabs, highlights, success'},
+  {key:'amber',               label:'Amber',                hint:'Anecdote, warning'},
+  {key:'amberDark',           label:'Amber dark',           hint:'Admin badge, Export button, active locate'},
+  {key:'cream',               label:'Text / cream',         hint:'Main text colour'},
+  {key:'dark',                label:'App background',       hint:'Outermost body background'},
+  {key:'defaultEncPinColor',  label:'Default enclosure pin',hint:'Used when an enclosure has no per-pin colour'}
+];
+
+function buildThemeRows(){
+  const wrap = document.getElementById('theme-rows');
+  if(!wrap) return;
+  wrap.innerHTML = '';
+  const th = cfg.theme || {};
+  THEME_FIELDS.forEach(f=>{
+    const val = th[f.key] || DEFAULT_THEME[f.key] || '#000000';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px';
+    row.innerHTML = `
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;color:var(--cream);font-weight:500">${f.label}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.35);line-height:1.3">${f.hint}</div>
+      </div>
+      <input class="form-input" id="theme-hex-${f.key}" value="${val}" style="width:90px;padding:4px 8px;font-size:12px;font-family:monospace">
+      <input type="color" id="theme-pick-${f.key}" value="${val}"
+        style="width:36px;height:36px;border:none;background:none;cursor:pointer;border-radius:6px;padding:2px">
+    `;
+    wrap.appendChild(row);
+    const hex  = document.getElementById('theme-hex-'+f.key);
+    const pick = document.getElementById('theme-pick-'+f.key);
+    pick.addEventListener('input', ()=>{ hex.value = pick.value; });
+    hex.addEventListener('input', ()=>{ if(/^#[0-9a-f]{6}$/i.test(hex.value)) pick.value = hex.value; });
+  });
+}
+
+function saveTheme(){
+  cfg.theme = cfg.theme || {};
+  THEME_FIELDS.forEach(f=>{
+    const v = document.getElementById('theme-hex-'+f.key)?.value.trim();
+    if(/^#[0-9a-f]{6}$/i.test(v)) cfg.theme[f.key] = v;
+  });
+  saveAll(); applyTheme(); renderPins(); showToast('Theme saved ✓');
+}
+
+function resetTheme(){
+  if(!confirm('Reset all theme colours to defaults?')) return;
+  cfg.theme = {...DEFAULT_THEME};
+  saveAll(); applyTheme(); buildThemeRows(); renderPins();
+  showToast('Theme reset ✓');
+}
+
+// ── SETUP JSON EXPORT/IMPORT ──
+// Setup = everything in cfg (theme, logo image, languages, UI string overrides, etc.)
+// but NOT the data lists (enclosures, categories, POIs).
+function exportSetupJson(){
+  const out = {
+    version:1, type:'zoomap-setup',
+    exportedAt: new Date().toISOString(),
+    config: cfg
+  };
+  const name = (cfg.zooName||'zoo').replace(/\s+/g,'-').toLowerCase() + '-setup.json';
+  triggerDownload(name, JSON.stringify(out, null, 2), 'application/json');
+}
+
+function importSetupJson(e){
+  const file = e.target.files?.[0]; if(!file) return;
+  e.target.value = '';
+  if(!confirm('Replace your current setup (theme, logo, languages, translations) with the imported file?')) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try{
+      const data = JSON.parse(ev.target.result);
+      const incoming = data.config || data; // tolerate bare-cfg files
+      if(typeof incoming !== 'object') throw new Error('Invalid setup file');
+      cfg = {...cfg, ...incoming};
+      if(!cfg.theme) cfg.theme = {...DEFAULT_THEME};
+      saveAll(); applyConfig(); populateSetupForms(); buildThemeRows();
+      renderEncList(); renderCatList(); renderPoiList(); renderPins(); renderPoiPins(); renderFilterPanel();
+      showToast('Setup imported ✓');
+    } catch(err){ showToast('Import failed: '+err.message); }
+  };
+  r.readAsText(file);
+}
+
+// ── FULL BUNDLE EXPORT/IMPORT (cfg + enclosures + categories + pois) ──
+function exportFullBundle(){
+  const out = {
+    version:1, type:'zoomap-bundle',
+    exportedAt: new Date().toISOString(),
+    config: cfg, enclosures, categories, pois
+  };
+  const name = (cfg.zooName||'zoo').replace(/\s+/g,'-').toLowerCase() + '-bundle.json';
+  triggerDownload(name, JSON.stringify(out, null, 2), 'application/json');
+}
+
+function importFullBundle(e){
+  const file = e.target.files?.[0]; if(!file) return;
+  e.target.value = '';
+  if(!confirm('Replace ALL current data (setup + enclosures + categories + POIs) with the imported bundle? This cannot be undone.')) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try{
+      const data = JSON.parse(ev.target.result);
+      if(data.config && typeof data.config === 'object') cfg = {...cfg, ...data.config};
+      if(!cfg.theme) cfg.theme = {...DEFAULT_THEME};
+      if(Array.isArray(data.enclosures)) enclosures = data.enclosures;
+      if(Array.isArray(data.categories)) categories = data.categories;
+      if(Array.isArray(data.pois))       pois       = data.pois;
+      saveAll(); applyConfig(); populateSetupForms(); buildThemeRows();
+      renderEncList(); renderCatList(); renderPoiList(); renderPins(); renderPoiPins(); renderFilterPanel();
+      showToast('Bundle imported ✓');
+    } catch(err){ showToast('Import failed: '+err.message); }
+  };
+  r.readAsText(file);
 }
 
 // ── LANGUAGES ──
@@ -2492,9 +2678,13 @@ function renderEncList(){
   document.getElementById('enc-edit-form').classList.remove('open');
   enclosures.forEach((enc,idx)=>{
     const item=document.createElement('div'); item.className='enc-list-item';
-    item.innerHTML=`<div>
-      <div class="enc-list-item-name">${enc.emoji||'📍'} ${encName(enc)}</div>
-      <div class="enc-list-item-sub">${enc.species||''} · ${(enc.animals||[]).length} animals</div>
+    const customColor = enc.color ? '' : ' opacity:.55;';
+    item.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+      <div class="cat-swatch" style="background:${encColor(enc)};${customColor}width:24px;height:24px;font-size:13px" title="${enc.color?'Custom pin colour':'Using general default'}">${enc.emoji||'📍'}</div>
+      <div style="flex:1;min-width:0">
+        <div class="enc-list-item-name">${encName(enc)}</div>
+        <div class="enc-list-item-sub">${enc.species||''} · ${(enc.animals||[]).length} animals</div>
+      </div>
     </div>
     <button class="btn-icon" onclick="editEnclosure(${idx})">✏️</button>`;
     list.appendChild(item);
@@ -2522,6 +2712,8 @@ function editEnclosure(idx){
   document.getElementById('enc-form-id').value=enc.id||'';
   document.getElementById('enc-form-species').value=enc.species||'';
   document.getElementById('enc-form-emoji').value=enc.emoji||'';
+  document.getElementById('enc-form-color').value=enc.color||'';
+  document.getElementById('enc-form-colorpicker').value=enc.color||(cfg.theme&&cfg.theme.defaultEncPinColor)||'#2d6a4f';
   document.getElementById('enc-form-px').value=enc.pinX!=null?enc.pinX.toFixed(1):'';
   document.getElementById('enc-form-py').value=enc.pinY!=null?enc.pinY.toFixed(1):'';
   document.getElementById('enc-form-gps').value=enc.gps?enc.gps.join(','):'';
@@ -2536,10 +2728,11 @@ function editEnclosure(idx){
 }
 
 function clearEncFormFields(){
-  ['enc-form-id','enc-form-species','enc-form-emoji','enc-form-px','enc-form-py','enc-form-gps','enc-form-adoption-link']
+  ['enc-form-id','enc-form-species','enc-form-emoji','enc-form-color','enc-form-px','enc-form-py','enc-form-gps','enc-form-adoption-link']
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('enc-form-endanger').value='';
   document.getElementById('enc-form-adopted').checked=false;
+  document.getElementById('enc-form-colorpicker').value=(cfg.theme&&cfg.theme.defaultEncPinColor)||'#2d6a4f';
   _setEncPhoto(null);
 }
 
@@ -2688,6 +2881,7 @@ function saveEnclosure(){
   const id=document.getElementById('enc-form-id').value.trim()||fallbackId;
   const species=document.getElementById('enc-form-species').value.trim();
   const emoji=document.getElementById('enc-form-emoji').value.trim()||'📍';
+  const color=document.getElementById('enc-form-color').value.trim();
   const px=parseFloat(document.getElementById('enc-form-px').value);
   const py=parseFloat(document.getElementById('enc-form-py').value);
   const gStr=document.getElementById('enc-form-gps').value.split(',').map(Number);
@@ -2715,7 +2909,7 @@ function saveEnclosure(){
   const imgSrc = currentEncImgData || null;
   const encData={
     ...(isNew?{}:enclosures[editingEncIdx]),
-    id,species,emoji,i18n,endangerStatus,adoptionStatus,adoptionLink,
+    id,species,emoji,color:color||null,i18n,endangerStatus,adoptionStatus,adoptionLink,
     imgData: imgSrc?.startsWith('data:') ? imgSrc : null,
     imgUrl:  imgSrc?.startsWith('data:') ? null : (imgSrc||null),
     animals:currentAnimalForms.map(a=>({...a})),
@@ -3289,6 +3483,15 @@ function openExportModal(){
     htmlSize,
     ()=>triggerDownload(fname, htmlContent, 'text/html;charset=utf-8')));
 
+  // Full backup bundle — setup + all data in one JSON file
+  const bundle = JSON.stringify({version:1,type:'zoomap-bundle',exportedAt:new Date().toISOString(),config:cfg,enclosures,categories,pois}, null, 2);
+  const bundleName = (cfg.zooName||'zoo').replace(/\s+/g,'-').toLowerCase() + '-bundle.json';
+  const bundleSize = formatSize(new TextEncoder().encode(bundle).length);
+  list.appendChild(makeExportItem('📦','Full Bundle (JSON)',
+    'Complete backup: theme, logo, languages, enclosures, categories, POIs. Re-importable from General → Backup & Restore.',
+    bundleSize,
+    ()=>triggerDownload(bundleName, bundle, 'application/json')));
+
   document.getElementById('export-modal-overlay').classList.add('open');
 }
 
@@ -3371,6 +3574,10 @@ function buildPublicHtml(){
   const zooName     = (cfg.zooName||'Zoo Interactive').replace(/</g,'&lt;');
   const invisClass  = cfg.invisiblePins ? 'invisible-pins' : '';
 
+  // Bake the theme into the exported CSS :root so the public site picks up the user's palette
+  const th = {...DEFAULT_THEME, ...(cfg.theme||{})};
+  const themeCss = `:root{--green-deep:${th.greenDeep};--green-mid:${th.greenMid};--green-light:${th.greenLight};--amber:${th.amber};--amber-dark:${th.amberDark};--cream:${th.cream};--dark:${th.dark};--font-display:'Playfair Display',Georgia,serif;--font-body:'DM Sans',sans-serif}`;
+
   // Single template literal. No more stray-semicolon trap.
   return `<!DOCTYPE html>
 <html lang="${lang}">
@@ -3386,7 +3593,7 @@ function buildPublicHtml(){
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
 <style>
-:root{--green-deep:#1a3a2a;--green-mid:#2d6a4f;--green-light:#52b788;--amber:#f4a261;--amber-dark:#e76f51;--cream:#fefae0;--dark:#0d1f17;--font-display:'Playfair Display',Georgia,serif;--font-body:'DM Sans',sans-serif}
+${themeCss}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;font-family:var(--font-body);background:var(--dark);color:var(--cream);touch-action:none}
 #app{width:100%;height:100%;position:relative;overflow:hidden}
@@ -3697,16 +3904,9 @@ function getCatById(id){ return categories.find(c=>c.id===id) || null; }
 function catName(cat){ const l=cfg.currentLang||cfg.defaultLang||'cs'; return (cat&&cat.i18n&&cat.i18n[l]&&cat.i18n[l].name) || (cat&&cat.id) || ''; }
 function poiName(poi){ const l=cfg.currentLang||cfg.defaultLang||'cs'; return (poi.i18n&&poi.i18n[l]&&poi.i18n[l].name) || poi.id || ''; }
 function encName(enc){ const l=cfg.currentLang||cfg.defaultLang||'cs'; return (enc.i18n&&enc.i18n[l]&&enc.i18n[l].name) || (enc.i18n&&enc.i18n[cfg.defaultLang]&&enc.i18n[cfg.defaultLang].name) || enc.species || enc.id || 'Enclosure'; }
-function encColor(species){
-  if(!species) return '#2d6a4f';
-  const s=species.toLowerCase();
-  if(/lion|tiger|cheetah|leopard|puma/.test(s)) return '#e76f51';
-  if(/bird|parrot|eagle|flamingo|penguin|toucan/.test(s)) return '#457b9d';
-  if(/reptile|snake|croc|lizard|turtle|gecko/.test(s)) return '#606c38';
-  if(/elephant|rhino|hippo|giraffe|zebra/.test(s)) return '#6b4226';
-  if(/primate|monkey|gorilla|chimp|lemur/.test(s)) return '#7b5ea7';
-  if(/aquat|fish|shark|dolphin|seal|otter|ray/.test(s)) return '#1d7da1';
-  return '#2d6a4f';
+function encColor(enc){
+  if(enc && enc.color) return enc.color;
+  return (cfg.theme && cfg.theme.defaultEncPinColor) || '#2d6a4f';
 }
 
 // ── Init ──
@@ -4053,7 +4253,7 @@ function gpsToImgPercent(lat,lng){
 // ── Pin SVG ──
 function pinSVG(enc){
   return '<svg width="36" height="44" viewBox="0 0 36 44" xmlns="http://www.w3.org/2000/svg">'
-       + '<path d="M18 0C8.06 0 0 8.06 0 18c0 12.5 18 26 18 26S36 30.5 36 18C36 8.06 27.94 0 18 0z" fill="' + encColor(enc.species) + '"/>'
+       + '<path d="M18 0C8.06 0 0 8.06 0 18c0 12.5 18 26 18 26S36 30.5 36 18C36 8.06 27.94 0 18 0z" fill="' + encColor(enc) + '"/>'
        + '<circle cx="18" cy="18" r="10" fill="rgba(0,0,0,0.28)"/>'
        + '<text x="18" y="23" text-anchor="middle" font-size="13">' + (enc.emoji||'📍') + '</text>'
        + '</svg>';
@@ -4397,7 +4597,7 @@ const CSV_I18N_FIELDS=['name','latin_name','tree_group','anecdote','weight','siz
 const CSV_I18N_KEYS  =['name','latinName', 'treeGroup', 'anecdote','weight','size', 'lifespan','habitat','food', 'location','desc','adoptionDesc'];
 
 function getCsvHeaders(langs){
-  const base=['id','species','emoji','img_url','pin_x','pin_y','gps_lat','gps_lng','endanger_status','adoption_status','adoption_link'];
+  const base=['id','species','emoji','color','img_url','pin_x','pin_y','gps_lat','gps_lng','endanger_status','adoption_status','adoption_link'];
   const perLang=[];
   langs.forEach(l=>{ CSV_I18N_FIELDS.forEach(f=>perLang.push(`${f}_${l}`)); });
   return [...base,...perLang];
@@ -4420,7 +4620,7 @@ function buildCsvData(){
   // ── Enclosures ──
   const encHeaders=getCsvHeaders(langs);
   const encRows=[encHeaders];
-  const r1={id:'lions',species:'African Lion',emoji:'🦁',img_url:'https://upload.wikimedia.org/wikipedia/commons/thumb/7/73/Lion_waiting_in_Namibia.jpg/320px-Lion_waiting_in_Namibia.jpg',pin_x:'28',pin_y:'42',gps_lat:'',gps_lng:'',endanger_status:'VU',adoption_status:'TRUE',adoption_link:'https://zoo.example.cz/adoptuj/lev'};
+  const r1={id:'lions',species:'African Lion',emoji:'🦁',color:'#e76f51',img_url:'https://upload.wikimedia.org/wikipedia/commons/thumb/7/73/Lion_waiting_in_Namibia.jpg/320px-Lion_waiting_in_Namibia.jpg',pin_x:'28',pin_y:'42',gps_lat:'',gps_lng:'',endanger_status:'VU',adoption_status:'TRUE',adoption_link:'https://zoo.example.cz/adoptuj/lev'};
   langs.forEach(l=>{
     const ex={
       cs:{name:'Výběh lvů',latin_name:'Panthera leo',tree_group:'Mammalia › Felidae',anecdote:'Samec může jíst až 40 kg masa najednou.',weight:'120–190 kg',size:'1,7–2,5 m délka těla',lifespan:'10–14 let ve volné přírodě',habitat:'Savana, travnaté oblasti',food:'Masožravec – zebra, antilopa, buvol',location:'Zóna Afrika, pavilon A',desc:'Lvi jsou jediné kočkovité šelmy žijící ve skupinách nazývaných smečka.',adoption_desc:'Adoptujte lva a podpořte chov a ochranu tohoto ohroženého druhu.'},
@@ -4430,7 +4630,7 @@ function buildCsvData(){
     const d=ex[l]||{}; CSV_I18N_FIELDS.forEach(f=>{ r1[`${f}_${l}`]=d[f]||''; });
   });
   encRows.push(encHeaders.map(h=>csvCell(r1[h]??'')));
-  const r2={id:'giraffes',species:'Giraffe',emoji:'🦒',img_url:'',pin_x:'62',pin_y:'24',gps_lat:'',gps_lng:'',endanger_status:'LC',adoption_status:'FALSE',adoption_link:''};
+  const r2={id:'giraffes',species:'Giraffe',emoji:'🦒',color:'',img_url:'',pin_x:'62',pin_y:'24',gps_lat:'',gps_lng:'',endanger_status:'LC',adoption_status:'FALSE',adoption_link:''};
   langs.forEach(l=>{
     const ex={
       cs:{name:'Savanový výběh žiraf',latin_name:'Giraffa camelopardalis',tree_group:'Mammalia › Giraffidae',anecdote:'Žirafa pije vodu jen jednou za několik dní.',weight:'750–1 270 kg',size:'4,3–5,7 m výška',lifespan:'20–25 let v zajetí',habitat:'Savana, řídký les',food:'Bylinožravec – listy akácie',location:'Zóna Afrika, savana',desc:'Žirafy jsou nejvyšší pozemská zvířata na světě.',adoption_desc:''},
@@ -4494,7 +4694,7 @@ function exportEnclosuresCsv(){
   const rows = [headers.map(csvCell).join(',')];
   enclosures.forEach(enc => {
     const r = {
-      id: enc.id||'', species: enc.species||'', emoji: enc.emoji||'',
+      id: enc.id||'', species: enc.species||'', emoji: enc.emoji||'', color: enc.color||'',
       img_url: enc.imgUrl||'', pin_x: enc.pinX??'', pin_y: enc.pinY??'',
       gps_lat: enc.gps?enc.gps[0]:'', gps_lng: enc.gps?enc.gps[1]:'',
       endanger_status: enc.endangerStatus||'',
@@ -4574,6 +4774,7 @@ function importEnclosuresCsv(e){
         const adoptionLink=get('adoption_link')||'';
         const emoji=get('emoji')||'📍';
         const species=get('species')||'';
+        const color=get('color')||'';
 
         // Per-language i18n
         const i18n={};
@@ -4587,7 +4788,7 @@ function importEnclosuresCsv(e){
         });
 
         const encData={
-          id,species,emoji,i18n,endangerStatus,adoptionStatus,adoptionLink,
+          id,species,emoji,color:color||null,i18n,endangerStatus,adoptionStatus,adoptionLink,
           imgData:null,
           imgUrl:get('img_url')||null,
           animals:[],
