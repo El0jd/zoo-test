@@ -293,12 +293,13 @@ body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:
 #rotate-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;background:var(--amber);border-radius:50%;cursor:pointer;border:2px solid #fff}
 
 /* ── CATEGORY / POI PINS ── */
-.poi-pin{position:absolute;transform:translate(-50%,-100%);cursor:pointer;z-index:99;transition:transform .12s}
-.poi-pin:active{transform:translate(-50%,-100%) scale(.88)}
+.poi-pin{position:absolute;transform:translate(-50%,-50%);cursor:pointer;z-index:99;transition:transform .12s}
+.poi-pin:active{transform:translate(-50%,-50%) scale(.88)}
 .poi-pin .pin-label{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,.65);border-radius:4px;padding:1px 5px;white-space:nowrap;pointer-events:none}
 body.invisible-pins .poi-pin svg{opacity:0;pointer-events:none}
 body.invisible-pins .poi-pin .pin-label{display:none}
-body.invisible-pins .poi-pin::after{content:'';position:absolute;top:-44px;left:-18px;width:36px;height:56px}
+/* Expand hit area when pins are invisible so visitors still find clickable spots */
+body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
 
 /* ── LAYER FILTER PANEL ── */
 #filter-btn{position:absolute;bottom:88px;left:14px;pointer-events:all;width:44px;height:44px;background:rgba(13,31,23,.92);border:1px solid rgba(255,255,255,.18);border-radius:50%;display:none;align-items:center;justify-content:center;font-size:18px;cursor:pointer;z-index:600;backdrop-filter:blur(8px);box-shadow:0 2px 10px rgba(0,0,0,.4);color:var(--cream)}
@@ -3483,15 +3484,27 @@ function startPoiPinPlacement(mode){
 // ════════════════════════════════════════════════════════════════════
 // POI PIN RENDERING
 // ════════════════════════════════════════════════════════════════════
-function poiSVG(cat){
-  const color=cat?.color||'#4a9eff';
-  const emoji=cat?.emoji||'📍';
+// Image-map POI pin: semi-transparent circle centred on the click point.
+function poiSvgImage(cat){
+  const color = cat?.color || '#4a9eff';
+  const emoji = cat?.emoji || '📍';
+  return `<svg width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="18" cy="18" r="16" fill="${color}" fill-opacity="0.35" stroke="${color}" stroke-opacity="0.7" stroke-width="1.5"/>
+    <text x="18" y="23" text-anchor="middle" font-size="15">${emoji}</text>
+  </svg>`;
+}
+// GPS POI pin: classic teardrop. Used by Leaflet markers.
+function poiSvgGps(cat){
+  const color = cat?.color || '#4a9eff';
+  const emoji = cat?.emoji || '📍';
   return `<svg width="32" height="40" viewBox="0 0 32 40" xmlns="http://www.w3.org/2000/svg">
     <path d="M16 0C7.16 0 0 7.16 0 16c0 11.1 16 24 16 24S32 27.1 32 16C32 7.16 24.84 0 16 0z" fill="${color}"/>
     <circle cx="16" cy="16" r="9" fill="rgba(0,0,0,0.25)"/>
     <text x="16" y="21" text-anchor="middle" font-size="12">${emoji}</text>
   </svg>`;
 }
+// Back-compat alias — anywhere that still calls poiSVG() gets the teardrop.
+function poiSVG(cat){ return poiSvgGps(cat); }
 
 function isLayerVisible(layerId){
   // default: visible (true) unless explicitly set to false
@@ -3519,7 +3532,7 @@ function renderPoiImgPins(){
     const pin=document.createElement('div');
     pin.className='poi-pin poi-pin-img';
     pin.style.left=px+'%'; pin.style.top=py+'%';
-    pin.innerHTML=poiSVG(cat)+(cfg.showLabels!==false?`<div class="pin-label">${poiName(poi)}</div>`:'');
+    pin.innerHTML=poiSvgImage(cat)+(cfg.showLabels!==false?`<div class="pin-label">${poiName(poi)}</div>`:'');
     pin.addEventListener('click',e=>{ e.stopPropagation(); if(!placingPin&&!placingPoiPin) openPoiPopup(idx); });
     con.appendChild(pin);
   });
@@ -3533,7 +3546,7 @@ function renderPoiMapMarkers(){
     const cat=getCatById(poi.categoryId);
     if(!isLayerVisible(poi.categoryId)) return;
     const lbl=cfg.showLabels!==false?`<div style="position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,.68);border-radius:4px;padding:1px 5px;white-space:nowrap;font-family:sans-serif">${poiName(poi)}</div>`:'';
-    const icon=L.divIcon({html:`<div class="leaflet-pin-wrapper">${poiSVG(cat)}${lbl}</div>`,className:'',iconSize:[32,40],iconAnchor:[16,40]});
+    const icon=L.divIcon({html:`<div class="leaflet-pin-wrapper">${poiSvgGps(cat)}${lbl}</div>`,className:'',iconSize:[32,40],iconAnchor:[16,40]});
     const m=L.marker(poi.gps,{icon});
     if(cfg.showPins!==false) m.addTo(lMap);
     m.on('click',()=>{ if(!placingPin&&!placingPoiPin) openPoiPopup(idx); });
@@ -3851,11 +3864,11 @@ body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:
 .filter-count{font-size:11px;color:rgba(255,255,255,.3);flex-shrink:0}
 .filter-eye{font-size:14px;flex-shrink:0;opacity:.25}
 .filter-row.active .filter-eye{opacity:1}
-.poi-pin{position:absolute;transform:translate(-50%,-100%);cursor:pointer;z-index:99;transition:transform .12s}
+.poi-pin{position:absolute;transform:translate(-50%,-50%);cursor:pointer;z-index:99;transition:transform .12s}
 .poi-pin .pin-label{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,.65);border-radius:4px;padding:1px 5px;white-space:nowrap;pointer-events:none}
 body.invisible-pins .poi-pin svg{opacity:0;pointer-events:none}
 body.invisible-pins .poi-pin .pin-label{display:none}
-body.invisible-pins .poi-pin::after{content:'';position:absolute;top:-44px;left:-18px;width:36px;height:56px}
+body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
 #poi-popup{position:absolute;inset:0;z-index:900;display:none;align-items:flex-end;pointer-events:none}
 #poi-popup.open{display:flex;pointer-events:all}
 #poi-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(2px)}
@@ -4460,7 +4473,17 @@ function pinSvgGps(enc){
        + '<text x="18" y="23" text-anchor="middle" font-size="13">' + (enc.emoji||'📍') + '</text>'
        + '</svg>';
 }
-function poiSVG(cat){
+// Image-map POI pin: semi-transparent circle centred on the click point.
+function poiSvgImage(cat){
+  const color = (cat && cat.color) || '#4a9eff';
+  const emoji = (cat && cat.emoji) || '📍';
+  return '<svg width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">'
+       + '<circle cx="18" cy="18" r="16" fill="' + color + '" fill-opacity="0.35" stroke="' + color + '" stroke-opacity="0.7" stroke-width="1.5"/>'
+       + '<text x="18" y="23" text-anchor="middle" font-size="15">' + emoji + '</text>'
+       + '</svg>';
+}
+// GPS POI pin: classic teardrop. Used by Leaflet markers.
+function poiSvgGps(cat){
   const color = (cat && cat.color) || '#4a9eff';
   const emoji = (cat && cat.emoji) || '📍';
   return '<svg width="32" height="40" viewBox="0 0 32 40" xmlns="http://www.w3.org/2000/svg">'
@@ -4509,7 +4532,7 @@ function renderPoiImgPins(){
     pin.className = 'poi-pin poi-pin-img';
     pin.style.left = px + '%';
     pin.style.top  = py + '%';
-    pin.innerHTML = poiSVG(cat) + (cfg.showLabels!==false ? '<div class="pin-label">' + poiName(poi) + '</div>' : '');
+    pin.innerHTML = poiSvgImage(cat) + (cfg.showLabels!==false ? '<div class="pin-label">' + poiName(poi) + '</div>' : '');
     pin.addEventListener('click', e=>{ e.stopPropagation(); openPoiPopup(idx); });
     con.appendChild(pin);
   });
@@ -4545,7 +4568,7 @@ function renderPoiMapMarkers(){
       ? '<div style="position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,.68);border-radius:4px;padding:1px 5px;white-space:nowrap;font-family:sans-serif">' + poiName(poi) + '</div>'
       : '';
     const icon = L.divIcon({
-      html: '<div class="leaflet-pin-wrapper">' + poiSVG(cat) + lbl + '</div>',
+      html: '<div class="leaflet-pin-wrapper">' + poiSvgGps(cat) + lbl + '</div>',
       className: '', iconSize: [32,40], iconAnchor: [16,40]
     });
     const m = L.marker(poi.gps, {icon});
