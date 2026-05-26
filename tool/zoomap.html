@@ -1230,7 +1230,7 @@ const DEFAULT_THEME = Object.freeze({
 
 let cfg={
   zooName:'Zoo Interactive',logoEmoji:'🦁',
-  gpsCenter:[48.8566,2.3522],defaultZoom:17,
+  gpsCenter:[49.233072,16.533485],defaultZoom:17,
   languages:['cs','en','fr'],defaultLang:'cs',currentLang:'cs',
   mapImageData:null,
   overlayEnabled:false,
@@ -3103,100 +3103,8 @@ function closeLangSwitcher(){ document.getElementById('lang-switcher').classList
 // DEMO DATA  (only on first run)
 // ════════════════════════════════════════════════════════════════════
 function addDemoDataIfEmpty(){
-  if(enclosures.length>0) return;
-  const[clat,clng]=cfg.gpsCenter;
-  enclosures=[
-    {id:'lions',species:'African Lion',emoji:'🦁',pinX:28,pinY:42,
-     gps:[clat+0.0004,clng-0.0005],
-     endangerStatus:'VU',adoptionStatus:true,
-     adoptionLink:'https://zoo.example.cz/adoptuj/lev',
-     i18n:{
-       cs:{name:'Výběh lvů',latinName:'Panthera leo',treeGroup:'Mammalia › Felidae',
-           anecdote:'Samec lva může sníst až 40 kg masa najednou a pak několik dní vůbec nejíst.',
-           weight:'120–190 kg',size:'1,7–2,5 m délka těla',lifespan:'10–14 let ve volné přírodě',
-           habitat:'Savana, travnaté oblasti subsaharské Afriky',
-           food:'Masožravec – zebra, antilopa gnu, buvol',
-           location:'Zóna Afrika, pavilon A',
-           desc:'Lvi jsou jediné kočkovité šelmy žijící ve skupinách zvaných smečka. Smečka obvykle tvoří 10–15 jedinců vedených samicemi. Samci se poznají podle mohutné hřívy, která signalizuje jejich zdraví a sílu.',
-           adoptionDesc:'Adoptujte lva a přispějte k záchraně tohoto ohrožného druhu. Vaše adopce financuje péči, krmení a veterinární ošetření.'},
-       en:{name:'Lion Pride',latinName:'Panthera leo',treeGroup:'Mammalia › Felidae',
-           anecdote:'A male lion can eat up to 40 kg of meat in one sitting and then go days without eating.',
-           weight:'120–190 kg',size:'1.7–2.5 m body length',lifespan:'10–14 years in the wild',
-           habitat:'Savanna, grasslands of sub-Saharan Africa',
-           food:'Carnivore – zebra, wildebeest, buffalo',
-           location:'Africa Zone, pavilion A',
-           desc:'Lions are the only cats that live in social groups called prides, typically 10–15 individuals led by females. Males are recognised by their impressive mane, which signals their health and strength.',
-           adoptionDesc:'Adopt a lion and help protect this vulnerable species. Your adoption funds care, feeding and veterinary treatment.'},
-       fr:{name:'Territoire des Lions',latinName:'Panthera leo',treeGroup:'Mammalia › Felidae',
-           anecdote:'Un lion mâle peut manger jusqu\'à 40 kg de viande en une seule fois puis rester plusieurs jours sans manger.',
-           weight:'120–190 kg',size:'1,7–2,5 m de long',lifespan:'10–14 ans dans la nature',
-           habitat:'Savane, prairies d\'Afrique subsaharienne',
-           food:'Carnivore – zèbre, gnou, buffle',
-           location:'Zone Afrique, pavillon A',
-           desc:'Les lions sont les seuls félins à vivre en groupes sociaux appelés prideaux, composés de 10 à 15 individus dirigés par les femelles.',
-           adoptionDesc:'Adoptez un lion et soutenez la protection de cette espèce vulnérable.'}
-     },
-     animals:[
-       {name:'Simba',age:'7 let',traits:'Jizva nad levým okem · vůdce smečky',imgData:null},
-       {name:'Nala', age:'6 let',traits:'Světlejší hříva · nejhravější',imgData:null}
-     ]
-    },
-    {id:'giraffes',species:'Giraffe',emoji:'🦒',pinX:62,pinY:24,
-     gps:[clat+0.0006,clng+0.0004],
-     endangerStatus:'LC',adoptionStatus:false,adoptionLink:'',
-     i18n:{
-       cs:{name:'Savanový výběh žiraf',latinName:'Giraffa camelopardalis',treeGroup:'Mammalia › Giraffidae',
-           anecdote:'Žirafa má černý jazyk dlouhý až 45 cm, kterým si chrání před spálením sluncem.',
-           weight:'750–1 270 kg',size:'4,3–5,7 m výška',lifespan:'20–25 let v zajetí',
-           habitat:'Savana, řídký les',food:'Bylinožravec – listy akácie, listy keřů',
-           location:'Zóna Afrika, savana',
-           desc:'Žirafy jsou nejvyšší pozemská zvířata světa. I přes svůj dlouhý krk mají, stejně jako lidé, jen 7 krčních obratlů. Naše smečka tvoří 4 samice a 1 samec.',
-           adoptionDesc:''},
-       en:{name:'Giraffe Savanna',latinName:'Giraffa camelopardalis',treeGroup:'Mammalia › Giraffidae',
-           anecdote:'A giraffe\'s dark tongue can be up to 45 cm long — the colour protects it from sunburn.',
-           weight:'750–1,270 kg',size:'4.3–5.7 m tall',lifespan:'20–25 years in captivity',
-           habitat:'Savanna, open woodland',food:'Herbivore – acacia leaves, shrub foliage',
-           location:'Africa Zone, savanna',
-           desc:'Giraffes are the tallest living terrestrial animals on Earth. Despite their long neck, they have the same 7 cervical vertebrae as humans. Our herd consists of 4 females and 1 male.',
-           adoptionDesc:''},
-       fr:{name:'Savane des Girafes',latinName:'Giraffa camelopardalis',treeGroup:'Mammalia › Giraffidae',
-           anecdote:'La langue sombre de la girafe peut atteindre 45 cm — sa couleur la protège des coups de soleil.',
-           weight:'750–1 270 kg',size:'4,3–5,7 m de haut',lifespan:'20–25 ans en captivité',
-           habitat:'Savane, forêt claire',food:'Herbivore – feuilles d\'acacia',
-           location:'Zone Afrique, savane',
-           desc:'Les girafes sont les plus grands animaux terrestres du monde.',adoptionDesc:''}
-     },
-     animals:[{name:'Mara',age:'12 let',traits:'5,7 m vysoká · narozena v zoo',imgData:null}]
-    },
-    {id:'penguins',species:'African Penguin',emoji:'🐧',pinX:72,pinY:68,
-     endangerStatus:'EN',adoptionStatus:true,adoptionLink:'https://zoo.example.cz/adoptuj/tucnak',
-     i18n:{
-       cs:{name:'Tučňáčí zátoka',latinName:'Spheniscus demersus',treeGroup:'Aves › Spheniscidae',
-           anecdote:'Afričtí tučňáci se dorozumívají voláním podobným oslímu řevu – proto se jim říká jackass penguins.',
-           weight:'2,1–3,7 kg',size:'60–70 cm výška',lifespan:'10–15 let ve volné přírodě',
-           habitat:'Pobřeží jižní Afriky, skalnaté ostrovy',food:'Masožravec – sardele, ančovičky, chobotnice',
-           location:'Zóna moří, pavilon B',
-           desc:'Naše kolonie čítá 34 afrických tučňáků v klimatizovaném pobřežním výběhu. Afričtí tučňáci jsou ohroženým druhem — jejich populace ve volné přírodě klesla za posledních 100 let o více než 95 %.',
-           adoptionDesc:'Adoptujte tučňáka a pomozte zachránit tento kriticky ohrožený druh. Vaše podpora financuje rehabilitaci a chov.'},
-       en:{name:'Penguin Cove',latinName:'Spheniscus demersus',treeGroup:'Aves › Spheniscidae',
-           anecdote:'African penguins communicate with a bray similar to a donkey — earning them the nickname "jackass penguins".',
-           weight:'2.1–3.7 kg',size:'60–70 cm tall',lifespan:'10–15 years in the wild',
-           habitat:'Southern African coastline, rocky islands',food:'Carnivore – anchovies, sardines, squid',
-           location:'Ocean Zone, pavilion B',
-           desc:'Our colony of 34 African penguins lives in a climate-controlled coastal habitat. African penguins are endangered — their wild population has declined by over 95% in the last 100 years.',
-           adoptionDesc:'Adopt a penguin and help save this critically endangered species. Your support funds rehabilitation and breeding programmes.'},
-       fr:{name:'Baie des Pingouins',latinName:'Spheniscus demersus',treeGroup:'Aves › Spheniscidae',
-           anecdote:'Le manchot africain communique par un braiment similaire à un âne — d\'où son surnom de "jackass penguin".',
-           weight:'2,1–3,7 kg',size:'60–70 cm de haut',lifespan:'10–15 ans dans la nature',
-           habitat:'Côte d\'Afrique australe, îles rocheuses',food:'Carnivore – anchois, sardines, calmars',
-           location:'Zone Océan, pavillon B',
-           desc:'Notre colonie de 34 manchots africains vit dans un habitat côtier climatisé. Les manchots africains sont une espèce en danger, leur population ayant diminué de plus de 95 % en 100 ans.',
-           adoptionDesc:'Adoptez un manchot et aidez à sauver cette espèce en voie de disparition.'}
-     },
-     animals:[]
-    }
-  ];
-  saveAll();
+  // No demo enclosures — fresh installs start with an empty list.
+  // (Demo categories/POIs, if any, are seeded elsewhere.)
 }
 
 // ════════════════════════════════════════════════════════════════════
