@@ -4175,31 +4175,29 @@ function applyUiTranslations(){
 // ── GPS prompt ──
 function showGpsPrompt(){ document.getElementById('gps-prompt').classList.remove('hidden'); }
 function dismissGpsPrompt(){ document.getElementById('gps-prompt').classList.add('hidden'); }
+// ── Location ──
+// iOS Safari is strict: navigator.geolocation.watchPosition() MUST be the very
+// first call after the user gesture (tap). Any DOM read/write between the tap
+// and watchPosition() can break the "user-gesture-grants-permission" link, and
+// Safari then silently never shows the permission prompt. Chrome iOS is more
+// lenient, which is why the bug only manifests on Safari.
+//
+// Both entry points — the locate button (toggleLocation) and the in-page GPS
+// prompt overlay button (requestGps) — funnel through startTracking() so the
+// rule is enforced in exactly one place.
+
+function toggleLocation(){ locationTracking ? stopTracking() : startTracking(); }
+
 function requestGps(){
-  // watchPosition must be the first call after the tap — iOS Safari rejects it if delayed
-  _watchId = navigator.geolocation.watchPosition(
-    pos => { userLatLng=[pos.coords.latitude, pos.coords.longitude]; updateUserDot(); },
-    err => {
-      console.warn('GPS error',err);
-      if(err.code===1) showToast(t('gpsDenied'));
-      else showToast(t('gpsError') + ': ' + err.message);
-      stopTracking();
-    },
-    {enableHighAccuracy:true, timeout:15000, maximumAge:5000}
-  );
-  locationTracking = true;
+  // Called from the in-page GPS prompt overlay's "Enable GPS" button.
+  startTracking();
   dismissGpsPrompt();
-  document.getElementById('locate-btn').classList.add('tracking');
-  document.getElementById('locate-btn').textContent = '🔵';
 }
 
-// ── Location ──
-function toggleLocation(){ locationTracking ? stopTracking() : startTracking(); }
 function startTracking(){
   if(!navigator.geolocation){ showToast(t('gpsNotAvailable')); return; }
-  locationTracking = true;
-  document.getElementById('locate-btn').classList.add('tracking');
-  document.getElementById('locate-btn').textContent = '🔵';
+  // ⚠️ watchPosition() must be the FIRST call here. Do NOT add any DOM
+  // operations above this line — iOS Safari requires it.
   _watchId = navigator.geolocation.watchPosition(
     pos => { userLatLng=[pos.coords.latitude, pos.coords.longitude]; updateUserDot(); },
     err => {
@@ -4210,6 +4208,10 @@ function startTracking(){
     },
     {enableHighAccuracy:true, timeout:15000, maximumAge:5000}
   );
+  // Now (and only now) do the UI updates
+  locationTracking = true;
+  const btn = document.getElementById('locate-btn');
+  if(btn){ btn.classList.add('tracking'); btn.textContent = '🔵'; }
 }
 function stopTracking(){
   locationTracking = false;
