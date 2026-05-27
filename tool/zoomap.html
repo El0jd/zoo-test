@@ -88,6 +88,8 @@ body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:
 #locate-btn{pointer-events:all;width:48px;height:48px;background:var(--green-mid);border:none;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.4);font-size:20px;color:#fff;transition:transform 0.15s,background 0.2s}
 #locate-btn:active{transform:scale(0.9)}
 #locate-btn.tracking{background:var(--amber-dark)}
+#recenter-btn{pointer-events:all;width:40px;height:40px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 3px 9px rgba(0,0,0,0.35);font-size:16px;color:#fff;transition:transform 0.15s,background 0.2s;backdrop-filter:blur(8px)}
+#recenter-btn:active{transform:scale(0.9)}
 
 /* ── ENCLOSURE POPUP ── */
 #enc-popup{position:absolute;inset:0;z-index:900;display:none;align-items:flex-end;pointer-events:none}
@@ -402,7 +404,10 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
       <button class="toggle-btn active" id="btn-imgview" onclick="switchView('image')">🗺 Map</button>
       <button class="toggle-btn" id="btn-mapview" onclick="switchView('gps')">📡 GPS</button>
     </div>
-    <button id="locate-btn" onclick="toggleLocation()">📍</button>
+    <div style="display:flex;align-items:center;gap:10px;pointer-events:none">
+      <button id="recenter-btn" onclick="recenterOnMe()" title="Recenter on my position" style="display:none">🎯</button>
+      <button id="locate-btn" onclick="toggleLocation()">📍</button>
+    </div>
   </div>
 
   <!-- ══ ADMIN OVERLAY TOOLBAR ══ -->
@@ -1238,6 +1243,8 @@ let cfg={
   overlayMetersW:300, overlayMetersH:200,
   overlayRotation:0, overlayOpacity:0.6,
   showPins:true,showLabels:true,defaultView:'image',mapTile:'osm',showGpsDebug:false,invisiblePins:false,
+  // 'on' once the visitor has ever enabled GPS — survives view switches and reloads
+  gpsPreference:'off',
   // Layer visibility: keyed by category id + 'enclosures'. true=visible
   layerVisibility:{},
   // UI string overrides: { lang: { key: 'translated value' } } — only stores user customisations
@@ -1401,6 +1408,8 @@ function switchView(v){
     renderPoiMapMarkers();
     if(isAdminMode&&cfg.overlayEnabled&&cfg.mapImageData&&!placingPin)
       document.getElementById('admin-bar').classList.add('visible');
+    // Auto-resume tracking if the visitor previously opted in (visitor mode only)
+    if(!isAdminMode && cfg.gpsPreference==='on' && !locationTracking) startTracking();
   } else {
     document.getElementById('admin-bar').classList.remove('visible');
     document.getElementById('filter-panel').classList.remove('open');
@@ -1408,6 +1417,7 @@ function switchView(v){
     renderPoiImgPins();
   }
   updateUserDot();
+  updateRecenterBtn();
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -2216,7 +2226,7 @@ window._dbgTrackCb=function(json){
     if(p.lat==null||p.lng==null){ dbgLog('err','lat/lng null after normalization'); return; }
     dbgLog('ok','lat='+p.lat.toFixed(6)+' lng='+p.lng.toFixed(6)+' acc='+p.accuracy+'m');
     userLatLng=[p.lat,p.lng]; updateUserDot();
-    if(lMap&&currentView==='gps') lMap.panTo(userLatLng,{animate:true,duration:0.5});
+    // (no auto-pan — visitor uses the 🎯 recenter button to follow themselves)
   } catch(e){
     dbgLog('err','Parse error: '+e+' | raw: '+json);
   }
@@ -2253,6 +2263,8 @@ function startTracking(){
   locationTracking=true;
   document.getElementById('locate-btn').classList.add('tracking');
   document.getElementById('locate-btn').textContent='🔵';
+  // Remember that the visitor opted in — survives view switches and reloads
+  if(!isAdminMode && cfg.gpsPreference!=='on'){ cfg.gpsPreference='on'; saveAll(); }
   try{
     Android.startLocationTracking('_zooLocUpdate',2000,3);
     dbgLog('ok','startLocationTracking started → callback: _zooLocUpdate');
@@ -2296,6 +2308,22 @@ function stopTracking(){
   document.getElementById('locate-btn').textContent='📍';
   document.getElementById('user-dot-img').style.display='none';
   if(lUserMarker){lMap.removeLayer(lUserMarker);lUserMarker=null;}
+  updateRecenterBtn();
+}
+
+// ── RECENTER ON ME ──
+// Manual pan to current position. Replaces the old auto-pan-on-every-fix behaviour.
+function recenterOnMe(){
+  if(!userLatLng) return;
+  if(currentView==='gps' && lMap){
+    lMap.panTo(userLatLng, {animate:true, duration:0.5});
+  }
+}
+// Show the recenter button only when there's a position to recenter ON, in GPS view.
+function updateRecenterBtn(){
+  const btn = document.getElementById('recenter-btn');
+  if(!btn) return;
+  btn.style.display = (currentView==='gps' && locationTracking && userLatLng) ? '' : 'none';
 }
 
 function updateUserDot(){
@@ -2311,10 +2339,9 @@ function updateUserDot(){
       radius:9, color:'#ffffff', weight:3,
       fillColor:color, fillOpacity:1
     }).addTo(lMap);
-    // In visitor mode pan to follow
-    if(!placingPin && !isAdminMode){
-      lMap.panTo(userLatLng, {animate:true,duration:0.5});
-    }
+    // No auto-pan: visitor uses the 🎯 recenter button to follow themselves.
+    // Admin mode (overlay alignment) also no longer pans on every fix.
+    updateRecenterBtn();
   }
 
   // ── Image view: project GPS onto zoo image accounting for overlay rotation ──
@@ -3737,6 +3764,8 @@ body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:
 #locate-btn{pointer-events:all;width:48px;height:48px;background:var(--green-mid);border:none;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4);font-size:20px;color:#fff;transition:transform .15s,background .2s}
 #locate-btn:active{transform:scale(.9)}
 #locate-btn.tracking{background:var(--amber-dark)}
+#recenter-btn{pointer-events:all;width:40px;height:40px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 3px 9px rgba(0,0,0,.35);font-size:16px;color:#fff;transition:transform .15s,background .2s;backdrop-filter:blur(8px)}
+#recenter-btn:active{transform:scale(.9)}
 #enc-popup{position:absolute;inset:0;z-index:900;display:none;align-items:flex-end;pointer-events:none}
 #enc-popup.open{display:flex;pointer-events:all}
 #enc-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(3px)}
@@ -3877,7 +3906,10 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
       <button class="toggle-btn active" id="btn-imgview" onclick="switchView('image')"></button>
       <button class="toggle-btn" id="btn-mapview" onclick="switchView('gps')"></button>
     </div>
-    <button id="locate-btn" onclick="toggleLocation()">📍</button>
+    <div style="display:flex;align-items:center;gap:10px;pointer-events:none">
+      <button id="recenter-btn" onclick="recenterOnMe()" title="Recenter on my position" style="display:none">🎯</button>
+      <button id="locate-btn" onclick="toggleLocation()">📍</button>
+    </div>
   </div>
 
   <!-- Lang switcher -->
@@ -4224,6 +4256,8 @@ function startTracking(){
   );
   // Now (and only now) do the UI updates
   locationTracking = true;
+  // Remember the opt-in so future view switches / reloads can resume automatically
+  if(cfg.gpsPreference !== 'on'){ cfg.gpsPreference = 'on'; }
   const btn = document.getElementById('locate-btn');
   if(btn){ btn.classList.add('tracking'); btn.textContent = '🔵'; }
 }
@@ -4234,13 +4268,30 @@ function stopTracking(){
   document.getElementById('locate-btn').textContent = '📍';
   document.getElementById('user-dot-img').style.display = 'none';
   if(lUserMarker){ lMap.removeLayer(lUserMarker); lUserMarker=null; }
+  updateRecenterBtn();
+  // NOTE: cfg.gpsPreference is intentionally NOT reset here — once the visitor
+  // has opted in we want view switches to keep resuming tracking, even after
+  // they tap the locate button "off". This matches the requested behaviour.
+}
+
+// ── RECENTER ON ME ──
+// Manual pan to current position. Replaces the old auto-pan-on-every-fix.
+function recenterOnMe(){
+  if(!userLatLng) return;
+  if(currentView==='gps' && lMap) lMap.panTo(userLatLng, {animate:true, duration:0.5});
+}
+function updateRecenterBtn(){
+  const btn = document.getElementById('recenter-btn');
+  if(!btn) return;
+  btn.style.display = (currentView==='gps' && locationTracking && userLatLng) ? '' : 'none';
 }
 function updateUserDot(){
   if(!userLatLng) return;
   if(currentView==='gps' && lMap){
     if(lUserMarker){ lMap.removeLayer(lUserMarker); lUserMarker=null; }
     lUserMarker = L.circleMarker(userLatLng, {radius:9, color:'#fff', weight:3, fillColor:'#4a9eff', fillOpacity:1}).addTo(lMap);
-    lMap.panTo(userLatLng, {animate:true, duration:0.5});
+    // No auto-pan — visitor taps the 🎯 recenter button to follow themselves
+    updateRecenterBtn();
   }
   if(currentView==='image'){
     const dotEl = document.getElementById('user-dot-img');
@@ -4321,12 +4372,16 @@ function switchView(v){
     applyOverlayToMap();
     renderMapPins();
     renderPoiMapMarkers();
+    // Auto-resume tracking if the visitor previously opted in (even if they
+    // tapped the locate button "off" on a previous view)
+    if(cfg.gpsPreference==='on' && !locationTracking) startTracking();
   } else {
     document.getElementById('filter-panel').classList.remove('open');
     renderImgPins();
     renderPoiImgPins();
   }
   updateUserDot();
+  updateRecenterBtn();
 }
 
 // ── Image pan/zoom ──
