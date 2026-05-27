@@ -90,6 +90,24 @@ body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:
 #locate-btn.tracking{background:var(--amber-dark)}
 #recenter-btn{pointer-events:all;width:40px;height:40px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 3px 9px rgba(0,0,0,0.35);font-size:16px;color:#fff;transition:transform 0.15s,background 0.2s;backdrop-filter:blur(8px)}
 #recenter-btn:active{transform:scale(0.9)}
+#search-btn{pointer-events:all;width:40px;height:40px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 3px 9px rgba(0,0,0,0.35);font-size:16px;color:#fff;transition:transform 0.15s,background 0.2s;backdrop-filter:blur(8px);margin-right:8px}
+#search-btn:active{transform:scale(0.9)}
+#search-panel{position:absolute;top:0;left:0;right:0;background:rgba(13,31,23,0.97);backdrop-filter:blur(12px);z-index:950;display:none;flex-direction:column;padding:12px 16px;box-shadow:0 6px 20px rgba(0,0,0,0.4);pointer-events:all}
+#search-panel.open{display:flex}
+#search-input-row{display:flex;align-items:center;gap:8px}
+#search-input{flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:10px 14px;color:var(--cream);font-family:var(--font-body);font-size:15px;outline:none}
+#search-input::placeholder{color:rgba(254,250,224,0.45)}
+#search-input:focus{border-color:var(--green-light);background:rgba(255,255,255,0.12)}
+#search-close{background:transparent;border:none;color:var(--cream);font-size:22px;cursor:pointer;padding:4px 10px;line-height:1}
+#search-results{margin-top:10px;max-height:55vh;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.search-result{display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;cursor:pointer;transition:background 0.15s}
+.search-result:hover,.search-result:active{background:rgba(82,183,136,0.18);border-color:var(--green-light)}
+.search-result .sr-icon{font-size:22px;flex-shrink:0}
+.search-result .sr-body{flex:1;min-width:0}
+.search-result .sr-label{font-weight:500;color:var(--cream);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.search-result .sr-sub{font-size:11px;color:rgba(254,250,224,0.55);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.search-result .sr-type{font-size:9px;text-transform:uppercase;letter-spacing:0.5px;padding:2px 6px;border-radius:4px;background:rgba(82,183,136,0.2);color:var(--green-light);flex-shrink:0}
+.search-empty{padding:18px 12px;text-align:center;color:rgba(254,250,224,0.45);font-size:13px}
 
 /* ── ENCLOSURE POPUP ── */
 #enc-popup{position:absolute;inset:0;z-index:900;display:none;align-items:flex-end;pointer-events:none}
@@ -393,7 +411,18 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
       <div id="logo-icon">🦁</div>
       <div id="logo-text">ZooMap</div>
     </div>
-    <button id="lang-btn">🌐 EN</button>
+    <div style="display:flex;align-items:center;pointer-events:none">
+      <button id="search-btn" onclick="openSearchPanel()" title="Search">🔍</button>
+      <button id="lang-btn">🌐 EN</button>
+    </div>
+  </div>
+  <div id="search-panel">
+    <div id="search-input-row">
+      <input id="search-input" type="text" placeholder="Search animals, enclosures, services..." autocomplete="off"
+        oninput="runSearch()" onkeydown="if(event.key==='Escape')closeSearchPanel()">
+      <button id="search-close" onclick="closeSearchPanel()" title="Close">×</button>
+    </div>
+    <div id="search-results"></div>
   </div>
   <div id="admin-badge">⚙ ADMIN</div>
   <div id="lang-switcher"></div>
@@ -944,9 +973,22 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
           <select class="form-input" id="map-tile-select" style="width:auto;padding:4px 8px"
             onchange="changeMapTile()">
             <option value="osm">OpenStreetMap</option>
-            <option value="sat">Satellite</option>
-            <option value="topo">Topo</option>
+            <option value="sat">Satellite (Esri)</option>
+            <option value="topo">Topo (OpenTopoMap)</option>
+            <option value="mapy_basic">Mapy.cz — Basic</option>
+            <option value="mapy_outdoor">Mapy.cz — Outdoor</option>
+            <option value="mapy_aerial">Mapy.cz — Aerial</option>
+            <option value="mapy_winter">Mapy.cz — Winter</option>
           </select>
+        </div>
+        <div class="setup-row" style="flex-direction:column;align-items:stretch;gap:6px">
+          <div>
+            <div class="setup-row-label">Mapy.cz API Key</div>
+            <div class="setup-row-hint">Required for Mapy.cz tile styles · register at <a href="https://developer.mapy.cz/" target="_blank" style="color:var(--green-light)">developer.mapy.cz</a></div>
+          </div>
+          <input type="text" class="form-input" id="cfg-mapy-key"
+            placeholder="paste your Mapy.cz API key"
+            onchange="changeMapyApiKey()" style="width:100%;font-family:monospace;font-size:12px">
         </div>
         <div class="setup-section-label" style="margin-top:16px">Developer Tools</div>
         <div class="setup-row">
@@ -1215,11 +1257,29 @@ function t(key, lang){
   return cfg.uiStrings?.[l]?.[key] ?? UI_STRINGS[l]?.[key] ?? UI_STRINGS.en[key] ?? key;
 }
 
+const MAPY_ATTR='<a href="https://api.mapy.cz/copyright" target="_blank">© Seznam.cz a.s. a další</a>';
 const TILES={
-  osm:{url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',attr:'© OpenStreetMap contributors'},
-  sat:{url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',attr:'Tiles © Esri'},
-  topo:{url:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',attr:'© OpenTopoMap'}
+  osm:{url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',attr:'© OpenStreetMap contributors',maxZoom:19},
+  sat:{url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',attr:'Tiles © Esri',maxZoom:19},
+  topo:{url:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',attr:'© OpenTopoMap',maxZoom:17},
+  mapy_basic:{url:'https://api.mapy.cz/v1/maptiles/basic/256/{z}/{x}/{y}?apikey={apikey}',attr:MAPY_ATTR,maxZoom:19,needsKey:true},
+  mapy_outdoor:{url:'https://api.mapy.cz/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey={apikey}',attr:MAPY_ATTR,maxZoom:19,needsKey:true},
+  mapy_aerial:{url:'https://api.mapy.cz/v1/maptiles/aerial/256/{z}/{x}/{y}?apikey={apikey}',attr:MAPY_ATTR,maxZoom:19,needsKey:true},
+  mapy_winter:{url:'https://api.mapy.cz/v1/maptiles/winter/256/{z}/{x}/{y}?apikey={apikey}',attr:MAPY_ATTR,maxZoom:19,needsKey:true}
 };
+function resolveTileDef(name){
+  let def=TILES[name]||TILES.osm;
+  if(def.needsKey && !cfg.mapyApiKey) def=TILES.osm;
+  return def;
+}
+function makeTileLayer(){
+  const def=resolveTileDef(cfg.mapTile||'osm');
+  return L.tileLayer(def.url,{
+    attribution:def.attr,
+    maxZoom:def.maxZoom||19,
+    apikey:cfg.mapyApiKey||''
+  });
+}
 const EARTH_R=6371000;
 
 // ════════════════════════════════════════════════════════════════════
@@ -1242,7 +1302,7 @@ let cfg={
   overlayGpsCenter:null,
   overlayMetersW:300, overlayMetersH:200,
   overlayRotation:0, overlayOpacity:0.6,
-  showPins:true,showLabels:true,defaultView:'image',mapTile:'osm',showGpsDebug:false,invisiblePins:false,
+  showPins:true,showLabels:true,defaultView:'image',mapTile:'osm',mapyApiKey:'',showGpsDebug:false,invisiblePins:false,
   // 'on' once the visitor has ever enabled GPS — survives view switches and reloads
   gpsPreference:'off',
   // Layer visibility: keyed by category id + 'enclosures'. true=visible
@@ -1567,8 +1627,7 @@ function handleImgTap(e){
 function initLeaflet(){
   const center=cfg.gpsCenter||[48.8566,2.3522];
   lMap=L.map('leaflet-map',{zoomControl:false}).setView(center,cfg.defaultZoom||17);
-  const t=TILES[cfg.mapTile||'osm'];
-  lTile=L.tileLayer(t.url,{attribution:t.attr}).addTo(lMap);
+  lTile=makeTileLayer().addTo(lMap);
 
   // Click → place GPS pin (enclosure or POI)
   lMap.on('click',e=>{
@@ -1594,8 +1653,19 @@ function initLeaflet(){
 
 function changeMapTile(){
   const s=document.getElementById('map-tile-select').value;
-  cfg.mapTile=s; if(lMap&&lTile) lMap.removeLayer(lTile);
-  const t=TILES[s]; lTile=L.tileLayer(t.url,{attribution:t.attr}).addTo(lMap);
+  cfg.mapTile=s;
+  const def=TILES[s];
+  if(def && def.needsKey && !cfg.mapyApiKey){
+    showToast('⚠️ Mapy.cz needs API key — falling back to OpenStreetMap');
+  }
+  if(lMap&&lTile) lMap.removeLayer(lTile);
+  if(lMap) lTile=makeTileLayer().addTo(lMap);
+  saveAll();
+}
+function changeMapyApiKey(){
+  const v=document.getElementById('cfg-mapy-key').value.trim();
+  cfg.mapyApiKey=v;
+  if(lMap&&lTile){ lMap.removeLayer(lTile); lTile=makeTileLayer().addTo(lMap); }
   saveAll();
 }
 
@@ -1978,6 +2048,113 @@ function encColor(enc){
 function encName(enc){
   const l=cfg.currentLang||'en';
   return enc.i18n?.[l]?.name||enc.i18n?.[cfg.defaultLang]?.name||enc.species||enc.id||'Enclosure';
+}
+
+// ════════════════════════════════════════════════════════════════════
+// SEARCH
+// ════════════════════════════════════════════════════════════════════
+function normStr(s){
+  return (s==null?'':String(s)).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+}
+function openSearchPanel(){
+  document.getElementById('search-panel').classList.add('open');
+  const input=document.getElementById('search-input');
+  input.value=''; input.focus();
+  runSearch();
+}
+function closeSearchPanel(){
+  document.getElementById('search-panel').classList.remove('open');
+}
+function buildSearchIndex(){
+  const idx=[];
+  enclosures.forEach((enc,i)=>{
+    const names=new Set(); const traits=new Set(); const animalNames=new Set();
+    (cfg.languages||[cfg.defaultLang||'cs']).forEach(l=>{
+      const n=enc.i18n?.[l]?.name; if(n) names.add(n);
+      const tr=enc.i18n?.[l]?.traits; if(tr) traits.add(tr);
+    });
+    if(enc.species) names.add(enc.species);
+    (enc.animals||[]).forEach(a=>{
+      (cfg.languages||[cfg.defaultLang||'cs']).forEach(l=>{
+        const an=a.i18n?.[l]?.name; if(an) animalNames.add(an);
+      });
+      if(a.name) animalNames.add(a.name);
+    });
+    const hay=[...names,...traits,...animalNames].map(normStr).join(' | ');
+    idx.push({type:'enc',idx:i,emoji:enc.emoji||'🐾',label:encName(enc),sub:enc.species||'',animals:[...animalNames],hay});
+  });
+  pois.forEach((poi,i)=>{
+    const cat=categories.find(c=>c.id===poi.category)||{};
+    const names=new Set(), descs=new Set();
+    (cfg.languages||[cfg.defaultLang||'cs']).forEach(l=>{
+      const n=poi.i18n?.[l]?.name; if(n) names.add(n);
+      const d=poi.i18n?.[l]?.desc; if(d) descs.add(d);
+    });
+    if(poi.id) names.add(poi.id);
+    const hay=[...names,...descs,cat.id||''].map(normStr).join(' | ');
+    idx.push({type:'poi',idx:i,emoji:cat.emoji||'📍',label:poiName(poi),sub:cat.id||poi.id,hay});
+  });
+  return idx;
+}
+function runSearch(){
+  const q=normStr(document.getElementById('search-input').value);
+  const out=document.getElementById('search-results');
+  out.innerHTML='';
+  const all=buildSearchIndex();
+  let results;
+  if(!q){
+    results=all.slice(0,20);
+  } else {
+    const terms=q.split(/\s+/).filter(Boolean);
+    results=all.filter(r=>terms.every(t=>r.hay.includes(t))).slice(0,30);
+  }
+  if(!results.length){
+    out.innerHTML='<div class="search-empty">No matches</div>';
+    return;
+  }
+  results.forEach(r=>{
+    const matchedAnimals=(r.type==='enc'&&q&&r.animals)
+      ? r.animals.filter(n=>normStr(n).includes(q)).slice(0,2).join(', ') : '';
+    const sub=matchedAnimals || r.sub || '';
+    const row=document.createElement('div');
+    row.className='search-result';
+    row.innerHTML='<div class="sr-icon">'+r.emoji+'</div>'
+      +'<div class="sr-body"><div class="sr-label">'+r.label.replace(/</g,'&lt;')+'</div>'
+      +(sub?'<div class="sr-sub">'+sub.replace(/</g,'&lt;')+'</div>':'')+'</div>'
+      +'<div class="sr-type">'+(r.type==='enc'?'enclosure':'place')+'</div>';
+    row.addEventListener('click',()=>navigateToResult(r));
+    out.appendChild(row);
+  });
+}
+function navigateToResult(r){
+  const item=(r.type==='enc')?enclosures[r.idx]:pois[r.idx];
+  if(!item) return;
+  closeSearchPanel();
+  const hasImage=(item.pinX!=null && item.pinY!=null);
+  const hasGps=item.gps && item.gps[0]!=null;
+  const targetView=hasImage?'image':(hasGps?'gps':null);
+  if(targetView && currentView!==targetView){ switchView(targetView); }
+  setTimeout(()=>{
+    if((currentView==='image') && hasImage) centerImageOnPct(item.pinX, item.pinY);
+    else if(currentView==='gps' && hasGps && lMap) lMap.setView(item.gps,Math.max(lMap.getZoom(),18),{animate:true});
+    if(r.type==='enc') openEncPopup(r.idx); else openPoiPopup(r.idx);
+  }, targetView?180:0);
+}
+function centerImageOnPct(pxPct, pyPct){
+  const wrap=document.getElementById('image-canvas-wrap');
+  if(!wrap) return;
+  const size=(typeof getMapImageSize==='function')?getMapImageSize():null;
+  let natW=size?size.w:0, natH=size?size.h:0;
+  if(!natW||!natH){
+    const img=document.getElementById('zoo-image');
+    natW=img&&img.naturalWidth||800; natH=img&&img.naturalHeight||600;
+  }
+  const wrapR=wrap.getBoundingClientRect();
+  imgT.scale=Math.max(imgT.scale, 1.6);
+  imgT.x = wrapR.width/2  - (pxPct/100)*natW*imgT.scale;
+  imgT.y = wrapR.height/2 - (pyPct/100)*natH*imgT.scale;
+  const stage=document.getElementById('image-stage');
+  if(stage) stage.style.transform='translate('+imgT.x+'px,'+imgT.y+'px) scale('+imgT.scale+')';
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -2484,6 +2661,7 @@ function populateSetupForms(){
   document.getElementById('tog-invisible-pins').checked=!!cfg.invisiblePins;
   document.getElementById('default-view-select').value=cfg.defaultView||'image';
   document.getElementById('map-tile-select').value=cfg.mapTile||'osm';
+  document.getElementById('cfg-mapy-key').value=cfg.mapyApiKey||'';
   document.getElementById('tog-gps-debug').checked=!!cfg.showGpsDebug;
   renderLangChips();
   buildUiStringsPanel();
@@ -3766,6 +3944,24 @@ body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:
 #locate-btn.tracking{background:var(--amber-dark)}
 #recenter-btn{pointer-events:all;width:40px;height:40px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 3px 9px rgba(0,0,0,.35);font-size:16px;color:#fff;transition:transform .15s,background .2s;backdrop-filter:blur(8px)}
 #recenter-btn:active{transform:scale(.9)}
+#search-btn{pointer-events:all;width:40px;height:40px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 3px 9px rgba(0,0,0,.35);font-size:16px;color:#fff;transition:transform .15s,background .2s;backdrop-filter:blur(8px);margin-right:8px}
+#search-btn:active{transform:scale(.9)}
+#search-panel{position:absolute;top:0;left:0;right:0;background:rgba(13,31,23,.97);backdrop-filter:blur(12px);z-index:950;display:none;flex-direction:column;padding:12px 16px;box-shadow:0 6px 20px rgba(0,0,0,.4);pointer-events:all}
+#search-panel.open{display:flex}
+#search-input-row{display:flex;align-items:center;gap:8px}
+#search-input{flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:10px 14px;color:var(--cream);font-family:var(--font-body);font-size:15px;outline:none}
+#search-input::placeholder{color:rgba(254,250,224,.45)}
+#search-input:focus{border-color:var(--green-light);background:rgba(255,255,255,.12)}
+#search-close{background:transparent;border:none;color:var(--cream);font-size:22px;cursor:pointer;padding:4px 10px;line-height:1}
+#search-results{margin-top:10px;max-height:55vh;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.search-result{display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;cursor:pointer;transition:background .15s}
+.search-result:hover,.search-result:active{background:rgba(82,183,136,.18);border-color:var(--green-light)}
+.search-result .sr-icon{font-size:22px;flex-shrink:0}
+.search-result .sr-body{flex:1;min-width:0}
+.search-result .sr-label{font-weight:500;color:var(--cream);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.search-result .sr-sub{font-size:11px;color:rgba(254,250,224,.55);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.search-result .sr-type{font-size:9px;text-transform:uppercase;letter-spacing:.5px;padding:2px 6px;border-radius:4px;background:rgba(82,183,136,.2);color:var(--green-light);flex-shrink:0}
+.search-empty{padding:18px 12px;text-align:center;color:rgba(254,250,224,.45);font-size:13px}
 #enc-popup{position:absolute;inset:0;z-index:900;display:none;align-items:flex-end;pointer-events:none}
 #enc-popup.open{display:flex;pointer-events:all}
 #enc-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(3px)}
@@ -3897,7 +4093,18 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
       <div id="logo-icon"></div>
       <div id="logo-text"></div>
     </div>
-    <button id="lang-btn" onclick="toggleLang()" style="display:none"></button>
+    <div style="display:flex;align-items:center;pointer-events:none">
+      <button id="search-btn" onclick="openSearchPanel()" title="Search">🔍</button>
+      <button id="lang-btn" onclick="toggleLang()" style="display:none"></button>
+    </div>
+  </div>
+  <div id="search-panel">
+    <div id="search-input-row">
+      <input id="search-input" type="text" placeholder="Search..." autocomplete="off"
+        oninput="runSearch()" onkeydown="if(event.key==='Escape')closeSearchPanel()">
+      <button id="search-close" onclick="closeSearchPanel()" title="Close">×</button>
+    </div>
+    <div id="search-results"></div>
   </div>
 
   <!-- Bottom bar -->
@@ -4000,11 +4207,29 @@ const UI_STRING_KEYS = ${snapKeys};
 
 // ── Constants ──
 const LANG_NAMES = {en:'English',fr:'Français',de:'Deutsch',es:'Español',it:'Italiano',pt:'Português',nl:'Nederlands',ru:'Русский',zh:'中文',ja:'日本語',ar:'العربية',ko:'한국어',cs:'Čeština'};
+const MAPY_ATTR = '<a href="https://api.mapy.cz/copyright" target="_blank">© Seznam.cz a.s. a další</a>';
 const TILES = {
-  osm:{url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',attr:'© OpenStreetMap'},
-  sat:{url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',attr:'© Esri'},
-  topo:{url:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',attr:'© OpenTopoMap'}
+  osm:{url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',attr:'© OpenStreetMap contributors',maxZoom:19},
+  sat:{url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',attr:'Tiles © Esri',maxZoom:19},
+  topo:{url:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',attr:'© OpenTopoMap',maxZoom:17},
+  mapy_basic:{url:'https://api.mapy.cz/v1/maptiles/basic/256/{z}/{x}/{y}?apikey={apikey}',attr:MAPY_ATTR,maxZoom:19,needsKey:true},
+  mapy_outdoor:{url:'https://api.mapy.cz/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey={apikey}',attr:MAPY_ATTR,maxZoom:19,needsKey:true},
+  mapy_aerial:{url:'https://api.mapy.cz/v1/maptiles/aerial/256/{z}/{x}/{y}?apikey={apikey}',attr:MAPY_ATTR,maxZoom:19,needsKey:true},
+  mapy_winter:{url:'https://api.mapy.cz/v1/maptiles/winter/256/{z}/{x}/{y}?apikey={apikey}',attr:MAPY_ATTR,maxZoom:19,needsKey:true}
 };
+function resolveTileDef(name){
+  let def = TILES[name] || TILES.osm;
+  if(def.needsKey && !cfg.mapyApiKey) def = TILES.osm;
+  return def;
+}
+function makeTileLayer(){
+  const def = resolveTileDef(cfg.mapTile||'osm');
+  return L.tileLayer(def.url, {
+    attribution: def.attr,
+    maxZoom: def.maxZoom||19,
+    apikey: cfg.mapyApiKey||''
+  });
+}
 const EARTH_R = 6371000;
 
 // ── State ──
@@ -4041,6 +4266,112 @@ function encName(enc){ const l=cfg.currentLang||cfg.defaultLang||'cs'; return (e
 function encColor(enc){
   if(enc && enc.color) return enc.color;
   return (cfg.theme && cfg.theme.defaultEncPinColor) || '#2d6a4f';
+}
+
+// ── Search ──
+function normStr(s){
+  return (s==null?'':String(s)).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+}
+function openSearchPanel(){
+  document.getElementById('search-panel').classList.add('open');
+  const input=document.getElementById('search-input');
+  input.value=''; input.focus();
+  runSearch();
+}
+function closeSearchPanel(){
+  document.getElementById('search-panel').classList.remove('open');
+}
+function buildSearchIndex(){
+  const idx=[];
+  const langs=cfg.languages||[cfg.defaultLang||'cs'];
+  enclosures.forEach(function(enc,i){
+    const names=new Set(), traits=new Set(), animalNames=new Set();
+    langs.forEach(function(l){
+      const n=enc.i18n&&enc.i18n[l]&&enc.i18n[l].name; if(n) names.add(n);
+      const tr=enc.i18n&&enc.i18n[l]&&enc.i18n[l].traits; if(tr) traits.add(tr);
+    });
+    if(enc.species) names.add(enc.species);
+    (enc.animals||[]).forEach(function(a){
+      langs.forEach(function(l){
+        const an=a.i18n&&a.i18n[l]&&a.i18n[l].name; if(an) animalNames.add(an);
+      });
+      if(a.name) animalNames.add(a.name);
+    });
+    const hay=[].concat([...names],[...traits],[...animalNames]).map(normStr).join(' | ');
+    idx.push({type:'enc',idx:i,emoji:enc.emoji||'🐾',label:encName(enc),sub:enc.species||'',animals:[...animalNames],hay:hay});
+  });
+  pois.forEach(function(poi,i){
+    const cat=categories.find(function(c){return c.id===poi.category;})||{};
+    const names=new Set(), descs=new Set();
+    langs.forEach(function(l){
+      const n=poi.i18n&&poi.i18n[l]&&poi.i18n[l].name; if(n) names.add(n);
+      const d=poi.i18n&&poi.i18n[l]&&poi.i18n[l].desc; if(d) descs.add(d);
+    });
+    if(poi.id) names.add(poi.id);
+    const hay=[].concat([...names],[...descs],[cat.id||'']).map(normStr).join(' | ');
+    idx.push({type:'poi',idx:i,emoji:cat.emoji||'📍',label:poiName(poi),sub:cat.id||poi.id,hay:hay});
+  });
+  return idx;
+}
+function runSearch(){
+  const q=normStr(document.getElementById('search-input').value);
+  const out=document.getElementById('search-results');
+  out.innerHTML='';
+  const all=buildSearchIndex();
+  let results;
+  if(!q){
+    results=all.slice(0,20);
+  } else {
+    const terms=q.split(/\s+/).filter(Boolean);
+    results=all.filter(function(r){return terms.every(function(t){return r.hay.indexOf(t)>=0;});}).slice(0,30);
+  }
+  if(!results.length){
+    out.innerHTML='<div class="search-empty">No matches</div>';
+    return;
+  }
+  results.forEach(function(r){
+    const matchedAnimals=(r.type==='enc'&&q&&r.animals)
+      ? r.animals.filter(function(n){return normStr(n).indexOf(q)>=0;}).slice(0,2).join(', ') : '';
+    const sub=matchedAnimals || r.sub || '';
+    const row=document.createElement('div');
+    row.className='search-result';
+    row.innerHTML='<div class="sr-icon">'+r.emoji+'</div>'
+      +'<div class="sr-body"><div class="sr-label">'+r.label.replace(/</g,'&lt;')+'</div>'
+      +(sub?'<div class="sr-sub">'+sub.replace(/</g,'&lt;')+'</div>':'')+'</div>'
+      +'<div class="sr-type">'+(r.type==='enc'?'enclosure':'place')+'</div>';
+    row.addEventListener('click',function(){navigateToResult(r);});
+    out.appendChild(row);
+  });
+}
+function navigateToResult(r){
+  const item=(r.type==='enc')?enclosures[r.idx]:pois[r.idx];
+  if(!item) return;
+  closeSearchPanel();
+  const hasImage=(item.pinX!=null && item.pinY!=null);
+  const hasGps=item.gps && item.gps[0]!=null;
+  const targetView=hasImage?'image':(hasGps?'gps':null);
+  if(targetView && currentView!==targetView){ switchView(targetView); }
+  setTimeout(function(){
+    if(currentView==='image' && hasImage) centerImageOnPct(item.pinX, item.pinY);
+    else if(currentView==='gps' && hasGps && lMap) lMap.setView(item.gps,Math.max(lMap.getZoom(),18),{animate:true});
+    if(r.type==='enc') openEncPopup(r.idx); else openPoiPopup(r.idx);
+  }, targetView?180:0);
+}
+function centerImageOnPct(pxPct, pyPct){
+  const wrap=document.getElementById('image-canvas-wrap');
+  if(!wrap) return;
+  const size=(typeof getMapImageSize==='function')?getMapImageSize():null;
+  let natW=size?size.w:0, natH=size?size.h:0;
+  if(!natW||!natH){
+    const img=document.getElementById('zoo-image');
+    natW=(img&&img.naturalWidth)||800; natH=(img&&img.naturalHeight)||600;
+  }
+  const wrapR=wrap.getBoundingClientRect();
+  imgT.scale=Math.max(imgT.scale, 1.6);
+  imgT.x = wrapR.width/2  - (pxPct/100)*natW*imgT.scale;
+  imgT.y = wrapR.height/2 - (pyPct/100)*natH*imgT.scale;
+  const stage=document.getElementById('image-stage');
+  if(stage) stage.style.transform='translate('+imgT.x+'px,'+imgT.y+'px) scale('+imgT.scale+')';
 }
 
 // ── Init ──
@@ -4313,8 +4644,7 @@ function initLeaflet(){
     zoomControl: true,
     attributionControl: true
   });
-  const tile = TILES[cfg.mapTile||'osm'];
-  lTile = L.tileLayer(tile.url, {attribution: tile.attr, maxZoom:22}).addTo(lMap);
+  lTile = makeTileLayer().addTo(lMap);
   applyOverlayToMap();
 }
 
