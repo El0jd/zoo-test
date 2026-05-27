@@ -151,6 +151,14 @@ body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:
 #enc-adoption-desc{font-size:12px;color:rgba(255,255,255,0.6);line-height:1.5}
 #enc-adoption-btn{background:var(--green-mid);border:none;color:#fff;font-family:var(--font-body);font-size:13px;font-weight:700;padding:10px 18px;border-radius:10px;cursor:pointer;align-self:flex-start;letter-spacing:0.3px}
 #enc-adoption-btn:active{background:var(--green-light)}
+.walk-here-btn{background:var(--amber);border:none;color:#1a1a1a;font-family:var(--font-body);font-size:13px;font-weight:700;padding:10px 18px;border-radius:10px;cursor:pointer;align-self:flex-start;letter-spacing:0.3px;margin-top:8px;display:none}
+.walk-here-btn.visible{display:inline-block}
+.walk-here-btn:active{background:var(--amber-dark)}
+#route-chip{position:absolute;top:72px;left:50%;transform:translateX(-50%);background:rgba(13,31,23,0.94);backdrop-filter:blur(10px);border:1px solid rgba(82,183,136,0.45);border-radius:22px;padding:8px 14px 8px 18px;display:none;align-items:center;gap:10px;z-index:600;pointer-events:all;box-shadow:0 4px 14px rgba(0,0,0,0.4);font-family:var(--font-body);font-size:13px;color:var(--cream);white-space:nowrap;max-width:90vw}
+#route-chip.visible{display:flex}
+#route-chip .route-num{color:var(--green-light);font-weight:700}
+#route-chip .route-clear{background:transparent;border:none;color:var(--cream);font-size:16px;cursor:pointer;padding:2px 6px;line-height:1;border-radius:50%;opacity:0.7}
+#route-chip .route-clear:hover{opacity:1;background:rgba(255,255,255,0.1)}
 
 /* Endanger badge */
 #enc-endanger-wrap{display:inline-flex;align-items:center;gap:7px;border-radius:20px;padding:5px 13px;margin-bottom:14px;font-size:12px;font-weight:700}
@@ -523,6 +531,8 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
           <div id="enc-adoption-desc"></div>
           <button id="enc-adoption-btn" onclick="openAdoptionLink()"></button>
         </div>
+
+        <button id="enc-walk-btn" class="walk-here-btn" onclick="walkToCurrentEnc()">🧭 Directions</button>
 
         <div id="enc-animals-section" style="display:none">
           <div class="enc-section-title"></div>
@@ -1026,8 +1036,16 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
           </div>
         </div>
         <div id="poi-desc"></div>
+        <button id="poi-walk-btn" class="walk-here-btn" onclick="walkToCurrentPoi()">🧭 Directions</button>
       </div>
     </div>
+  </div>
+  <div id="route-chip">
+    <span class="route-icon">🚶</span>
+    <span class="route-num" id="route-dist">— m</span>
+    <span style="opacity:0.5">·</span>
+    <span class="route-num" id="route-time">— min</span>
+    <button class="route-clear" onclick="clearRoute()" title="Clear route">×</button>
   </div>
 
   <!-- ══ EXPORT CHOOSER MODAL ══ -->
@@ -2156,6 +2174,112 @@ function centerImageOnPct(pxPct, pyPct){
 }
 
 // ════════════════════════════════════════════════════════════════════
+// WALKING ITINERARY (Mapy.cz routing)
+// ════════════════════════════════════════════════════════════════════
+let _currentEncIdx = -1, _currentPoiIdx = -1;
+let _route = { dest:null, destName:'', polyline:null, lastFetchT:0, fetchInFlight:false };
+
+function haversineM(a, b){
+  if(!a||!b) return Infinity;
+  const R=6371000, toR=d=>d*Math.PI/180;
+  const dLat=toR(b[0]-a[0]), dLng=toR(b[1]-a[1]);
+  const la1=toR(a[0]), la2=toR(b[0]);
+  const h=Math.sin(dLat/2)**2 + Math.cos(la1)*Math.cos(la2)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+function distToPolylineM(pt, latlngs){
+  if(!latlngs||!latlngs.length) return Infinity;
+  let best=Infinity;
+  for(let i=0;i<latlngs.length;i++){
+    const d=haversineM(pt, latlngs[i]);
+    if(d<best) best=d;
+  }
+  return best;
+}
+async function fetchMapyRoute(fromLatLng, toLatLng){
+  if(!cfg.mapyApiKey){ showToast('⚠️ Need Mapy.cz API key for routing'); return null; }
+  const u='https://api.mapy.cz/v1/routing/route'
+    +'?start='+fromLatLng[1]+','+fromLatLng[0]
+    +'&end='+toLatLng[1]+','+toLatLng[0]
+    +'&routeType=foot_fast&lang='+(cfg.currentLang||cfg.defaultLang||'cs')
+    +'&apikey='+encodeURIComponent(cfg.mapyApiKey);
+  try{
+    const r=await fetch(u, {headers:{'Accept':'application/json'}});
+    if(!r.ok){ showToast('Routing failed ('+r.status+')'); return null; }
+    return await r.json();
+  } catch(e){ showToast('Routing error'); console.warn('[routing]',e); return null; }
+}
+function drawRoute(geoJson){
+  if(!lMap) return;
+  if(_route.polyline){ lMap.removeLayer(_route.polyline); _route.polyline=null; }
+  const coords = geoJson&&geoJson.geometry&&geoJson.geometry.geometry&&geoJson.geometry.geometry.coordinates;
+  if(!coords||!coords.length) return;
+  const latlngs = coords.map(c=>[c[1], c[0]]);
+  _route.polyline = L.polyline(latlngs, {color:'#f4a261', weight:5, opacity:0.85, lineCap:'round'}).addTo(lMap);
+  const chip = document.getElementById('route-chip');
+  if(chip){
+    const m = Math.round(geoJson.length||0);
+    const s = Math.round(geoJson.duration||0);
+    const distTxt = m>=1000 ? (m/1000).toFixed(1)+' km' : m+' m';
+    const min = Math.max(1, Math.round(s/60));
+    document.getElementById('route-dist').textContent = distTxt;
+    document.getElementById('route-time').textContent = min+' min';
+    chip.classList.add('visible');
+  }
+  try{ lMap.fitBounds(_route.polyline.getBounds(), {padding:[60,60], maxZoom:19}); }catch(_){}
+}
+function clearRoute(){
+  if(_route.polyline && lMap){ lMap.removeLayer(_route.polyline); }
+  _route = { dest:null, destName:'', polyline:null, lastFetchT:0, fetchInFlight:false };
+  const chip=document.getElementById('route-chip');
+  if(chip) chip.classList.remove('visible');
+}
+async function walkTo(destLatLng, destName){
+  if(!destLatLng||destLatLng[0]==null) return;
+  _route.dest = destLatLng.slice();
+  _route.destName = destName||'';
+  if(currentView!=='gps'){ switchView('gps'); }
+  if(!locationTracking){
+    if(typeof startTracking==='function') startTracking();
+    showToast('📡 Acquiring GPS — route will appear once located');
+  }
+  if(!userLatLng){
+    setTimeout(()=>{ if(userLatLng) _doRouteFetch(); }, 1500);
+    return;
+  }
+  _doRouteFetch();
+}
+async function _doRouteFetch(){
+  if(_route.fetchInFlight || !_route.dest || !userLatLng) return;
+  _route.fetchInFlight = true;
+  _route.lastFetchT = Date.now();
+  const json = await fetchMapyRoute(userLatLng, _route.dest);
+  _route.fetchInFlight = false;
+  if(json) drawRoute(json);
+}
+function maybeRecalcRoute(){
+  if(!_route.dest || !userLatLng || _route.fetchInFlight) return;
+  // First fix after walkTo() was called before GPS arrived
+  if(!_route.polyline){ _doRouteFetch(); return; }
+  if(Date.now()-_route.lastFetchT < 15000) return;
+  const latlngs = _route.polyline.getLatLngs().map(p=>[p.lat,p.lng]);
+  const drift = distToPolylineM(userLatLng, latlngs);
+  if(drift > 25) _doRouteFetch();
+}
+function walkToCurrentEnc(){
+  const enc = enclosures[_currentEncIdx];
+  if(!enc || !enc.gps || enc.gps[0]==null){ showToast('No GPS for this enclosure'); return; }
+  closeEncPopup();
+  walkTo(enc.gps, encName(enc));
+}
+function walkToCurrentPoi(){
+  const poi = pois[_currentPoiIdx];
+  if(!poi || !poi.gps || poi.gps[0]==null){ showToast('No GPS for this POI'); return; }
+  closePoiPopup();
+  walkTo(poi.gps, poiName(poi));
+}
+
+// ════════════════════════════════════════════════════════════════════
 // ENCLOSURE POPUP
 // ════════════════════════════════════════════════════════════════════
 // Saved for adoption link button
@@ -2172,6 +2296,9 @@ function setText(id,val){ const el=document.getElementById(id); if(el) el.textCo
 
 function openEncPopup(idx){
   const enc=enclosures[idx]; if(!enc) return;
+  _currentEncIdx = idx;
+  const wb=document.getElementById('enc-walk-btn');
+  if(wb){ wb.classList.toggle('visible', !!(enc.gps && enc.gps[0]!=null)); }
   const l=cfg.currentLang||'cs';
   const i18n=enc.i18n?.[l]||enc.i18n?.[cfg.defaultLang]||{};
 
@@ -2503,6 +2630,7 @@ function updateRecenterBtn(){
 
 function updateUserDot(){
   if(!userLatLng) return;
+  try{ maybeRecalcRoute(); }catch(_){}
 
   // ── GPS view ──
   if(currentView==='gps' && lMap){
@@ -3705,6 +3833,9 @@ function renderPoiMapMarkers(){
 // ════════════════════════════════════════════════════════════════════
 function openPoiPopup(idx){
   const poi=pois[idx]; if(!poi) return;
+  _currentPoiIdx = idx;
+  const wb=document.getElementById('poi-walk-btn');
+  if(wb){ wb.classList.toggle('visible', !!(poi.gps && poi.gps[0]!=null)); }
   const cat=getCatById(poi.categoryId)||{emoji:'📍',color:'#2d6a4f'};
   const l=cfg.currentLang||cfg.defaultLang||'cs';
   const i18n=poi.i18n?.[l]||poi.i18n?.[cfg.defaultLang]||{};
@@ -3988,6 +4119,14 @@ body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:
 #enc-adoption-title{font-size:13px;font-weight:700;color:var(--green-light)}
 #enc-adoption-desc{font-size:12px;color:rgba(255,255,255,.6);line-height:1.5}
 #enc-adoption-btn{background:var(--green-mid);border:none;color:#fff;font-family:var(--font-body);font-size:13px;font-weight:700;padding:10px 18px;border-radius:10px;cursor:pointer;align-self:flex-start}
+.walk-here-btn{background:var(--amber);border:none;color:#1a1a1a;font-family:var(--font-body);font-size:13px;font-weight:700;padding:10px 18px;border-radius:10px;cursor:pointer;align-self:flex-start;letter-spacing:.3px;margin-top:8px;display:none}
+.walk-here-btn.visible{display:inline-block}
+.walk-here-btn:active{background:var(--amber-dark)}
+#route-chip{position:absolute;top:72px;left:50%;transform:translateX(-50%);background:rgba(13,31,23,.94);backdrop-filter:blur(10px);border:1px solid rgba(82,183,136,.45);border-radius:22px;padding:8px 14px 8px 18px;display:none;align-items:center;gap:10px;z-index:600;pointer-events:all;box-shadow:0 4px 14px rgba(0,0,0,.4);font-family:var(--font-body);font-size:13px;color:var(--cream);white-space:nowrap;max-width:90vw}
+#route-chip.visible{display:flex}
+#route-chip .route-num{color:var(--green-light);font-weight:700}
+#route-chip .route-clear{background:transparent;border:none;color:var(--cream);font-size:16px;cursor:pointer;padding:2px 6px;line-height:1;border-radius:50%;opacity:.7}
+#route-chip .route-clear:hover{opacity:1;background:rgba(255,255,255,.1)}
 #enc-endanger-wrap{display:inline-flex;align-items:center;gap:7px;border-radius:20px;padding:5px 13px;margin-bottom:14px;font-size:12px;font-weight:700}
 .endanger-CR{background:rgba(231,111,81,.2);border:1px solid rgba(231,111,81,.5);color:#e76f51}
 .endanger-EN{background:rgba(244,162,97,.2);border:1px solid rgba(244,162,97,.5);color:#f4a261}
@@ -4143,6 +4282,7 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
           <div id="enc-adoption-desc"></div>
           <button id="enc-adoption-btn" onclick="openAdoptionLink()"></button>
         </div>
+        <button id="enc-walk-btn" class="walk-here-btn" onclick="walkToCurrentEnc()">🧭 Directions</button>
         <div id="enc-animals-section" style="display:none">
           <div class="enc-section-title" id="enc-residents-title"></div>
           <div id="enc-animals-list"></div>
@@ -4163,8 +4303,16 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
           <div><div id="poi-title"></div><div id="poi-cat-label"></div></div>
         </div>
         <div id="poi-desc"></div>
+        <button id="poi-walk-btn" class="walk-here-btn" onclick="walkToCurrentPoi()">🧭 Directions</button>
       </div>
     </div>
+  </div>
+  <div id="route-chip">
+    <span class="route-icon">🚶</span>
+    <span class="route-num" id="route-dist">— m</span>
+    <span style="opacity:0.5">·</span>
+    <span class="route-num" id="route-time">— min</span>
+    <button class="route-clear" onclick="clearRoute()" title="Clear route">×</button>
   </div>
 
   <!-- GPS prompt -->
@@ -4368,6 +4516,108 @@ function centerImageOnPct(pxPct, pyPct){
   imgT.y = wrapR.height/2 - (pyPct/100)*natH*imgT.scale;
   const stage=document.getElementById('image-stage');
   if(stage) stage.style.transform='translate('+imgT.x+'px,'+imgT.y+'px) scale('+imgT.scale+')';
+}
+
+// ── Walking itinerary (Mapy.cz routing) ──
+let _currentEncIdx = -1, _currentPoiIdx = -1;
+let _route = { dest:null, destName:'', polyline:null, lastFetchT:0, fetchInFlight:false };
+function haversineM(a, b){
+  if(!a||!b) return Infinity;
+  const R=6371000, toR=function(d){return d*Math.PI/180;};
+  const dLat=toR(b[0]-a[0]), dLng=toR(b[1]-a[1]);
+  const la1=toR(a[0]), la2=toR(b[0]);
+  const h=Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(la1)*Math.cos(la2)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+function distToPolylineM(pt, latlngs){
+  if(!latlngs||!latlngs.length) return Infinity;
+  let best=Infinity;
+  for(let i=0;i<latlngs.length;i++){
+    const d=haversineM(pt, latlngs[i]);
+    if(d<best) best=d;
+  }
+  return best;
+}
+function fetchMapyRoute(fromLatLng, toLatLng){
+  if(!cfg.mapyApiKey){ showToast('Need Mapy.cz API key for routing'); return Promise.resolve(null); }
+  const u='https://api.mapy.cz/v1/routing/route'
+    +'?start='+fromLatLng[1]+','+fromLatLng[0]
+    +'&end='+toLatLng[1]+','+toLatLng[0]
+    +'&routeType=foot_fast&lang='+(cfg.currentLang||cfg.defaultLang||'cs')
+    +'&apikey='+encodeURIComponent(cfg.mapyApiKey);
+  return fetch(u, {headers:{'Accept':'application/json'}}).then(function(r){
+    if(!r.ok){ showToast('Routing failed ('+r.status+')'); return null; }
+    return r.json();
+  }).catch(function(e){ showToast('Routing error'); console.warn('[routing]',e); return null; });
+}
+function drawRoute(geoJson){
+  if(!lMap) return;
+  if(_route.polyline){ lMap.removeLayer(_route.polyline); _route.polyline=null; }
+  const coords = geoJson && geoJson.geometry && geoJson.geometry.geometry && geoJson.geometry.geometry.coordinates;
+  if(!coords||!coords.length) return;
+  const latlngs = coords.map(function(c){return [c[1], c[0]];});
+  _route.polyline = L.polyline(latlngs, {color:'#f4a261', weight:5, opacity:0.85, lineCap:'round'}).addTo(lMap);
+  const chip = document.getElementById('route-chip');
+  if(chip){
+    const m = Math.round(geoJson.length||0);
+    const s = Math.round(geoJson.duration||0);
+    const distTxt = m>=1000 ? (m/1000).toFixed(1)+' km' : m+' m';
+    const min = Math.max(1, Math.round(s/60));
+    document.getElementById('route-dist').textContent = distTxt;
+    document.getElementById('route-time').textContent = min+' min';
+    chip.classList.add('visible');
+  }
+  try{ lMap.fitBounds(_route.polyline.getBounds(), {padding:[60,60], maxZoom:19}); }catch(_){}
+}
+function clearRoute(){
+  if(_route.polyline && lMap){ lMap.removeLayer(_route.polyline); }
+  _route = { dest:null, destName:'', polyline:null, lastFetchT:0, fetchInFlight:false };
+  const chip=document.getElementById('route-chip');
+  if(chip) chip.classList.remove('visible');
+}
+function walkTo(destLatLng, destName){
+  if(!destLatLng||destLatLng[0]==null) return;
+  _route.dest = destLatLng.slice();
+  _route.destName = destName||'';
+  if(currentView!=='gps'){ switchView('gps'); }
+  if(!locationTracking){
+    if(typeof startTracking==='function') startTracking();
+    showToast('Acquiring GPS — route will appear once located');
+  }
+  if(!userLatLng){
+    setTimeout(function(){ if(userLatLng) _doRouteFetch(); }, 1500);
+    return;
+  }
+  _doRouteFetch();
+}
+function _doRouteFetch(){
+  if(_route.fetchInFlight || !_route.dest || !userLatLng) return;
+  _route.fetchInFlight = true;
+  _route.lastFetchT = Date.now();
+  fetchMapyRoute(userLatLng, _route.dest).then(function(json){
+    _route.fetchInFlight = false;
+    if(json) drawRoute(json);
+  });
+}
+function maybeRecalcRoute(){
+  if(!_route.dest || !userLatLng || _route.fetchInFlight) return;
+  if(!_route.polyline){ _doRouteFetch(); return; }
+  if(Date.now()-_route.lastFetchT < 15000) return;
+  const latlngs = _route.polyline.getLatLngs().map(function(p){return [p.lat,p.lng];});
+  const drift = distToPolylineM(userLatLng, latlngs);
+  if(drift > 25) _doRouteFetch();
+}
+function walkToCurrentEnc(){
+  const enc = enclosures[_currentEncIdx];
+  if(!enc || !enc.gps || enc.gps[0]==null){ showToast('No GPS for this enclosure'); return; }
+  closeEncPopup();
+  walkTo(enc.gps, encName(enc));
+}
+function walkToCurrentPoi(){
+  const poi = pois[_currentPoiIdx];
+  if(!poi || !poi.gps || poi.gps[0]==null){ showToast('No GPS for this POI'); return; }
+  closePoiPopup();
+  walkTo(poi.gps, poiName(poi));
 }
 
 // ── Init ──
@@ -4614,6 +4864,7 @@ function updateRecenterBtn(){
 }
 function updateUserDot(){
   if(!userLatLng) return;
+  try{ maybeRecalcRoute(); }catch(_){}
   if(currentView==='gps' && lMap){
     if(lUserMarker){ lMap.removeLayer(lUserMarker); lUserMarker=null; }
     lUserMarker = L.circleMarker(userLatLng, {radius:9, color:'#fff', weight:3, fillColor:'#4a9eff', fillOpacity:1}).addTo(lMap);
@@ -4951,6 +5202,9 @@ function renderPoiMapMarkers(){
 // ── POI popup ──
 function openPoiPopup(idx){
   const poi = pois[idx]; if(!poi) return;
+  _currentPoiIdx = idx;
+  const wb=document.getElementById('poi-walk-btn');
+  if(wb){ wb.classList.toggle('visible', !!(poi.gps && poi.gps[0]!=null)); }
   const cat = getCatById(poi.categoryId) || {emoji:'📍', color:'#2d6a4f'};
   const l = cfg.currentLang || cfg.defaultLang || 'cs';
   const i18n = (poi.i18n && (poi.i18n[l] || poi.i18n[cfg.defaultLang])) || {};
@@ -5005,6 +5259,9 @@ function openAdoptionLink(){ if(_adoptionLink) window.open(_adoptionLink, '_blan
 
 function openEncPopup(idx){
   const enc = enclosures[idx]; if(!enc) return;
+  _currentEncIdx = idx;
+  const wb=document.getElementById('enc-walk-btn');
+  if(wb){ wb.classList.toggle('visible', !!(enc.gps && enc.gps[0]!=null)); }
   const l = cfg.currentLang || cfg.defaultLang || 'cs';
   const i18n = (enc.i18n && (enc.i18n[l] || enc.i18n[cfg.defaultLang])) || {};
 
