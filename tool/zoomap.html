@@ -4032,11 +4032,25 @@ window.addEventListener('DOMContentLoaded',()=>{
       return;
     }
     if(!navigator.geolocation) return;
+    // On launch we'd like to surface the in-page "Enable GPS" overlay when the
+    // visitor hasn't yet decided. Chrome/Firefox/Edge support permissions.query
+    // for geolocation; iOS Safari exposes navigator.permissions but its query()
+    // call REJECTS with a TypeError for the 'geolocation' name. Without a
+    // fallback the overlay never appears on Safari — the user just sees the
+    // small 📍 button and assumes the feature is missing.
+    //
+    // Fix: when the query rejects (Safari path) or the API is missing entirely
+    // (legacy browsers), show the prompt unconditionally. The overlay's
+    // "Enable GPS" button then triggers startTracking() synchronously inside
+    // the user gesture, which is what iOS Safari actually needs.
     if(navigator.permissions && navigator.permissions.query){
       navigator.permissions.query({name:'geolocation'}).then(r=>{
-        if(r.state==='prompt') showGpsPrompt();
+        if(r.state==='prompt')       showGpsPrompt();
         else if(r.state==='granted') startTracking();
-      }).catch(()=>{});
+        // r.state==='denied' → leave silent; user must reset via browser settings
+      }).catch(()=>{ showGpsPrompt(); });   // ← Safari iOS lands here
+    } else {
+      showGpsPrompt();                       // ← very old browsers, no permissions API
     }
   }, 1200);
 });
