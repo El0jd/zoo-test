@@ -2130,15 +2130,13 @@ function navigateToResult(r){
   const item=(r.type==='enc')?enclosures[r.idx]:pois[r.idx];
   if(!item) return;
   closeSearchPanel();
-  const hasImage=(item.pinX!=null && item.pinY!=null);
-  const hasGps=item.gps && item.gps[0]!=null;
-  const targetView=hasImage?'image':(hasGps?'gps':null);
-  if(targetView && currentView!==targetView){ switchView(targetView); }
-  setTimeout(()=>{
-    if((currentView==='image') && hasImage) centerImageOnPct(item.pinX, item.pinY);
-    else if(currentView==='gps' && hasGps && lMap) lMap.setView(item.gps,Math.max(lMap.getZoom(),18),{animate:true});
-    if(r.type==='enc') openEncPopup(r.idx); else openPoiPopup(r.idx);
-  }, targetView?180:0);
+  if(currentView==='image' && item.pinX!=null && item.pinY!=null){
+    centerImageOnPct(item.pinX, item.pinY);
+  } else if(currentView==='gps' && item.gps && item.gps[0]!=null && lMap){
+    lMap.setView(item.gps, Math.max(lMap.getZoom(),18), {animate:true});
+  } else {
+    showToast('No pin for this item in the current view');
+  }
 }
 function centerImageOnPct(pxPct, pyPct){
   const wrap=document.getElementById('image-canvas-wrap');
@@ -4347,15 +4345,13 @@ function navigateToResult(r){
   const item=(r.type==='enc')?enclosures[r.idx]:pois[r.idx];
   if(!item) return;
   closeSearchPanel();
-  const hasImage=(item.pinX!=null && item.pinY!=null);
-  const hasGps=item.gps && item.gps[0]!=null;
-  const targetView=hasImage?'image':(hasGps?'gps':null);
-  if(targetView && currentView!==targetView){ switchView(targetView); }
-  setTimeout(function(){
-    if(currentView==='image' && hasImage) centerImageOnPct(item.pinX, item.pinY);
-    else if(currentView==='gps' && hasGps && lMap) lMap.setView(item.gps,Math.max(lMap.getZoom(),18),{animate:true});
-    if(r.type==='enc') openEncPopup(r.idx); else openPoiPopup(r.idx);
-  }, targetView?180:0);
+  if(currentView==='image' && item.pinX!=null && item.pinY!=null){
+    centerImageOnPct(item.pinX, item.pinY);
+  } else if(currentView==='gps' && item.gps && item.gps[0]!=null && lMap){
+    lMap.setView(item.gps, Math.max(lMap.getZoom(),18), {animate:true});
+  } else {
+    showToast('No pin for this item in the current view');
+  }
 }
 function centerImageOnPct(pxPct, pyPct){
   const wrap=document.getElementById('image-canvas-wrap');
