@@ -58,6 +58,25 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--font-body);ba
 .pin-label{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,0.65);border-radius:4px;padding:1px 5px;white-space:nowrap;pointer-events:none}
 .map-pin.hidden-pin{opacity:0;pointer-events:none}
 .leaflet-pin-wrapper{position:relative;cursor:pointer}
+/* ── Path network (nodes + edges drawn on the image map) ── */
+#path-net-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:110}
+#route-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:118}
+#path-net-nodes{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:120}
+.pn-node{position:absolute;width:13px;height:13px;border-radius:50%;background:#fff;border:2px solid #2d6a4f;transform:translate(-50%,-50%);box-shadow:0 1px 3px rgba(0,0,0,.5)}
+.pn-node.sel{background:#f4a261;border-color:#e76f51;width:18px;height:18px}
+#pn-editor-bar{position:absolute;left:50%;transform:translateX(-50%);bottom:84px;display:none;gap:6px;background:rgba(13,31,23,.95);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.15);border-radius:14px;padding:8px;z-index:650;pointer-events:all;flex-wrap:wrap;max-width:94vw;justify-content:center}
+#pn-editor-bar.visible{display:flex}
+.pn-tool{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#fefae0;font-size:12px;padding:8px 10px;border-radius:9px;cursor:pointer;white-space:nowrap;font-family:var(--font-body)}
+.pn-tool.active{background:var(--green-mid);border-color:var(--green-light)}
+.pn-tool.done{background:var(--amber);color:#1a1a1a;border:none;font-weight:700}
+.pn-tool.warn{background:rgba(231,111,81,.2);border-color:rgba(231,111,81,.5);color:#e76f51}
+.pn-hint{width:100%;text-align:center;font-size:11px;color:rgba(255,255,255,.6);margin-top:2px}
+#pn-status-panel{position:absolute;left:50%;transform:translateX(-50%);bottom:84px;width:min(360px,92vw);background:rgba(13,31,23,.97);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.16);border-radius:16px;padding:14px 16px;z-index:660;display:none;pointer-events:all;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+#pn-status-panel.visible{display:block}
+.pn-status-title{font-family:var(--font-display);font-size:15px;font-weight:700;color:var(--cream);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.pn-status-title button{background:transparent;border:none;color:var(--cream);font-size:18px;cursor:pointer;opacity:.7}
+.pn-status-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:13px;color:var(--cream)}
+.pn-status-row:last-child{border-bottom:none}
 /* Invisible pins mode: SVG hidden, label hidden, hit-zone kept */
 body.invisible-pins .map-pin svg{opacity:0;pointer-events:none}
 body.invisible-pins .map-pin .pin-label{display:none}
@@ -396,6 +415,9 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
       <div id="image-stage">
         <img id="zoo-image" src="" alt="" draggable="false">
         <div id="zoo-svg-host"></div>
+        <svg id="path-net-svg" style="display:none"></svg>
+        <svg id="route-svg" style="display:none"></svg>
+        <div id="path-net-nodes" style="display:none"></div>
         <div id="img-pins-container"></div>
         <div id="user-dot-img" class="user-dot-wrap" style="display:none">
           <div id="user-dot-img-inner" class="user-dot"></div>
@@ -497,6 +519,33 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
   <!-- ══ PIN PLACEMENT BANNER ══ -->
   <div id="pin-banner">📍 Tap map to place pin</div>
   <button id="pin-cancel-btn" onclick="stopPinPlacement()">✕ Cancel</button>
+
+  <!-- ══ PATH NETWORK EDITOR BAR ══ -->
+  <div id="pn-editor-bar">
+    <button class="pn-tool" id="pn-tool-add" onclick="pnSetTool('add')">➕ Node</button>
+    <button class="pn-tool" id="pn-tool-link" onclick="pnSetTool('link')">🔗 Link</button>
+    <button class="pn-tool" id="pn-tool-move" onclick="pnSetTool('move')">✋ Move</button>
+    <button class="pn-tool" id="pn-tool-delete" onclick="pnSetTool('delete')">🗑 Delete</button>
+    <button class="pn-tool" id="pn-tool-status" onclick="pnEnterStatusMode()">🚦 Status</button>
+    <button class="pn-tool" id="pn-tool-validate" onclick="pnValidate()">✓ Check</button>
+    <button class="pn-tool done" onclick="pnExitEditor()">Done</button>
+    <div class="pn-hint" id="pn-editor-hint"></div>
+  </div>
+
+  <!-- ══ PATH STATUS PANEL (Tier 1) ══ -->
+  <div id="pn-status-panel">
+    <div class="pn-status-title"><span id="pn-status-head">Path status</span><button onclick="pnCloseStatus()">✕</button></div>
+    <div class="pn-status-row"><span>🚧 Temporarily closed</span>
+      <label class="toggle-sw"><input type="checkbox" id="pn-st-closed" onchange="pnToggleAttr('closed',this.checked)"><span class="slider"></span></label></div>
+    <div class="pn-status-row"><span>♿ Wheelchair accessible</span>
+      <label class="toggle-sw"><input type="checkbox" id="pn-st-wheelchair" onchange="pnToggleAttr('wheelchair',this.checked)"><span class="slider"></span></label></div>
+    <div class="pn-status-row"><span>🛒 Stroller accessible</span>
+      <label class="toggle-sw"><input type="checkbox" id="pn-st-stroller" onchange="pnToggleAttr('stroller',this.checked)"><span class="slider"></span></label></div>
+    <div class="pn-status-row"><span>🪜 Has stairs</span>
+      <label class="toggle-sw"><input type="checkbox" id="pn-st-stairs" onchange="pnToggleAttr('stairs',this.checked)"><span class="slider"></span></label></div>
+    <div class="pn-status-row"><span>⛰ Steep</span>
+      <label class="toggle-sw"><input type="checkbox" id="pn-st-steep" onchange="pnToggleAttr('steep',this.checked)"><span class="slider"></span></label></div>
+  </div>
 
   <!-- ══ ENCLOSURE POPUP ══ -->
   <div id="enc-popup">
@@ -1000,6 +1049,15 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
             placeholder="paste your Mapy.cz API key"
             onchange="changeMapyApiKey()" style="width:100%;font-family:monospace;font-size:12px">
         </div>
+        <div class="setup-section-label" style="margin-top:16px">🛣 Path Network</div>
+        <div class="setup-row">
+          <div>
+            <div class="setup-row-label">Walking paths for routing</div>
+            <div class="setup-row-hint" id="pn-count-hint">Draw the walkable paths so visitors can get directions on-device (no API needed).</div>
+          </div>
+          <button class="form-input" style="width:auto;padding:8px 14px;background:var(--green-mid);color:#fff;border:none;cursor:pointer;font-weight:600" onclick="pnOpenEditor()">Edit Paths</button>
+        </div>
+
         <div class="setup-section-label" style="margin-top:16px">Developer Tools</div>
         <div class="setup-row">
           <div>
@@ -1327,6 +1385,9 @@ let cfg={
   layerVisibility:{},
   // UI string overrides: { lang: { key: 'translated value' } } — only stores user customisations
   uiStrings:{},
+  // Walking-path graph for on-device routing.
+  //   nodes: [{id,x,y}]  x/y in image %   ·   edges: [{id,a,b,closed,wheelchair,stroller,stairs,steep}]
+  pathNetwork:{nodes:[],edges:[]},
   // Theme palette — applied at runtime by setting CSS variables on :root
   theme:{...DEFAULT_THEME}
 };
@@ -1493,6 +1554,7 @@ function switchView(v){
     document.getElementById('filter-panel').classList.remove('open');
     renderImgPins();
     renderPoiImgPins();
+    if(typeof renderPathNetwork==='function') renderPathNetwork();
   }
   updateUserDot();
   updateRecenterBtn();
@@ -1542,7 +1604,9 @@ function setupImagePan(){
     drag=false; wrap.classList.remove('grabbing');
     const wasTap = !moved && Date.now()-tapT < TAP_TIME;
     const pinning = (placingPin||placingPoiPin) && pinMode==='image';
-    if(wasTap && pinning){
+    if(wasTap && typeof pnEditActive==='function' && pnEditActive()){
+      pnHandleStageTap(endX, endY);
+    } else if(wasTap && pinning){
       handleImgTap({clientX:endX, clientY:endY});
     } else if(wasTap && viaTouch && pressTarget){
       // Touch path: native click is suppressed by our preventDefault, so dispatch manually
@@ -1960,6 +2024,7 @@ function openOverlayEditor(){
 function renderPins(){
   if(currentView==='gps') renderMapPins();
   else renderImgPins();
+  if(typeof renderPathNetwork==='function') renderPathNetwork();
 }
 
 // Image-map pin: semi-transparent circle CENTRED on the click point.
@@ -2005,6 +2070,7 @@ function renderImgPins(){
       e.stopPropagation();
       if(window._mapDragMoved) return;   // suppress click if user was panning
       if(placingPin) return;
+      if(pnEditActive()) return;         // suppress while editing the path network
       openEncPopup(idx);
     });
     con.appendChild(pin);
@@ -2171,6 +2237,274 @@ function centerImageOnPct(pxPct, pyPct){
   imgT.y = wrapR.height/2 - (pyPct/100)*natH*imgT.scale;
   const stage=document.getElementById('image-stage');
   if(stage) stage.style.transform='translate('+imgT.x+'px,'+imgT.y+'px) scale('+imgT.scale+')';
+}
+
+// ════════════════════════════════════════════════════════════════════
+// PATH NETWORK  (walkable graph drawn on the image map, used by the
+// on-device router). Nodes/edges live in image-% space; meters are
+// derived from the overlay georeferencing so distances stay real.
+// ════════════════════════════════════════════════════════════════════
+let pnEditMode=false, pnStatusMode=false, pnTool='add', pnSelNode=null, pnStatusEdgeId=null;
+const PN_SNAP_PX=18;  // screen px: snap-to-existing-node radius
+const PN_HIT_PX=20;   // screen px: tap hit radius for nodes/edges
+
+function pnNet(){
+  if(!cfg.pathNetwork) cfg.pathNetwork={nodes:[],edges:[]};
+  if(!cfg.pathNetwork.nodes) cfg.pathNetwork.nodes=[];
+  if(!cfg.pathNetwork.edges) cfg.pathNetwork.edges=[];
+  return cfg.pathNetwork;
+}
+function pnNewId(p){ return p+Date.now().toString(36)+Math.floor(Math.random()*1296).toString(36); }
+function pnGetNode(id){ const ns=pnNet().nodes; for(let i=0;i<ns.length;i++) if(ns[i].id===id) return ns[i]; return null; }
+function pnEditActive(){ return pnEditMode||pnStatusMode; }
+
+// ── Geo: image-% → GPS (inverse of gpsToImgPercent) ──
+function imgPercentToGps(x,y){
+  if(!cfg.overlayGpsCenter) return null;
+  const cLat=cfg.overlayGpsCenter[0], cLng=cfg.overlayGpsCenter[1];
+  const mW=cfg.overlayMetersW||300, mH=cfg.overlayMetersH||200;
+  const mPerDegLat=EARTH_R*Math.PI/180;
+  const mPerDegLng=EARTH_R*Math.cos(cLat*Math.PI/180)*Math.PI/180;
+  if(!mPerDegLat||!mPerDegLng) return null;
+  const rx=(x/50-1)*mW;
+  const ry=(1-y/50)*mH;
+  const rad=-(cfg.overlayRotation||0)*Math.PI/180;
+  const dx= rx*Math.cos(rad)+ry*Math.sin(rad);
+  const dy=-rx*Math.sin(rad)+ry*Math.cos(rad);
+  return [cLat+dy/mPerDegLat, cLng+dx/mPerDegLng];
+}
+// Meters between two image-% points (rotation-invariant; no GPS centre needed)
+function pnMeters(ax,ay,bx,by){
+  const mW=cfg.overlayMetersW||300, mH=cfg.overlayMetersH||200;
+  const dxm=(bx-ax)/100*(2*mW);
+  const dym=(by-ay)/100*(2*mH);
+  return Math.sqrt(dxm*dxm+dym*dym);
+}
+function pnEdgeMeters(e){ const a=pnGetNode(e.a),b=pnGetNode(e.b); if(!a||!b) return Infinity; return pnMeters(a.x,a.y,b.x,b.y); }
+
+// ── Rendering ──
+function pnEdgeColor(e){
+  if(e.closed) return '#e74c3c';
+  if(e.wheelchair===false || e.stroller===false) return '#f4a261';
+  return '#52b788';
+}
+function renderPathNetwork(){
+  const svg=document.getElementById('path-net-svg');
+  const ndiv=document.getElementById('path-net-nodes');
+  if(!svg||!ndiv) return;
+  const show=pnEditActive();
+  if(!show){ svg.style.display='none'; ndiv.style.display='none'; svg.innerHTML=''; ndiv.innerHTML=''; return; }
+  const net=pnNet();
+  const sz=(typeof getMapImageSize==='function')?getMapImageSize():{w:800,h:600};
+  const W=Math.max(sz.w,1), H=Math.max(sz.h,1);
+  const sw=Math.max(2,(W+H)/600);
+  svg.setAttribute('viewBox','0 0 '+W+' '+H);
+  svg.style.display=''; ndiv.style.display='';
+  let s='';
+  for(let i=0;i<net.edges.length;i++){
+    const e=net.edges[i], a=pnGetNode(e.a), b=pnGetNode(e.b); if(!a||!b) continue;
+    const x1=a.x/100*W, y1=a.y/100*H, x2=b.x/100*W, y2=b.y/100*H;
+    const col=pnEdgeColor(e);
+    const dash=e.closed ? ' stroke-dasharray="'+(sw*2.2)+','+(sw*1.8)+'"' : '';
+    s+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+col+'" stroke-width="'+sw+'" stroke-linecap="round"'+dash+'/>';
+    if(e.stairs||e.steep){
+      const mx=(x1+x2)/2, my=(y1+y2)/2;
+      s+='<circle cx="'+mx+'" cy="'+my+'" r="'+(sw*1.6)+'" fill="#1a3a2a" stroke="'+col+'" stroke-width="'+(sw*0.5)+'"/>';
+    }
+  }
+  svg.innerHTML=s;
+  let nh='';
+  for(let i=0;i<net.nodes.length;i++){
+    const n=net.nodes[i];
+    nh+='<div class="pn-node'+(pnSelNode===n.id?' sel':'')+'" style="left:'+n.x+'%;top:'+n.y+'%"></div>';
+  }
+  ndiv.innerHTML=nh;
+}
+function pnUpdateCountHint(){
+  const el=document.getElementById('pn-count-hint'); if(!el) return;
+  const net=pnNet();
+  el.textContent=net.nodes.length+' nodes · '+net.edges.length+' paths drawn.';
+}
+function pnChanged(){ saveAll(); renderPathNetwork(); pnUpdateCountHint(); }
+
+// ── Hit-testing (stage-pixel space) ──
+function pnTapToStage(clientX, clientY){
+  const wrap=document.getElementById('image-canvas-wrap'); const r=wrap.getBoundingClientRect();
+  const cx=(clientX-r.left-imgT.x)/imgT.scale;
+  const cy=(clientY-r.top -imgT.y)/imgT.scale;
+  const sz=(typeof getMapImageSize==='function')?getMapImageSize():{w:800,h:600};
+  const W=Math.max(sz.w,1), H=Math.max(sz.h,1);
+  return {cx,cy,W,H,xPct:cx/W*100,yPct:cy/H*100};
+}
+function pnNearestNode(cx,cy,W,H,maxStagePx){
+  const net=pnNet(); let best=maxStagePx, hit=null;
+  for(let i=0;i<net.nodes.length;i++){
+    const n=net.nodes[i], nx=n.x/100*W, ny=n.y/100*H;
+    const d=Math.hypot(nx-cx,ny-cy);
+    if(d<best){ best=d; hit=n; }
+  }
+  return hit;
+}
+function _distPtSeg(px,py,x1,y1,x2,y2){
+  const dx=x2-x1, dy=y2-y1, L2=dx*dx+dy*dy;
+  let t = L2>0 ? ((px-x1)*dx+(py-y1)*dy)/L2 : 0;
+  t=Math.max(0,Math.min(1,t));
+  const qx=x1+t*dx, qy=y1+t*dy;
+  return Math.hypot(px-qx,py-qy);
+}
+function pnNearestEdge(cx,cy,W,H,maxStagePx){
+  const net=pnNet(); let best=maxStagePx, hit=null;
+  for(let i=0;i<net.edges.length;i++){
+    const e=net.edges[i], a=pnGetNode(e.a), b=pnGetNode(e.b); if(!a||!b) continue;
+    const d=_distPtSeg(cx,cy,a.x/100*W,a.y/100*H,b.x/100*W,b.y/100*H);
+    if(d<best){ best=d; hit=e; }
+  }
+  return hit;
+}
+
+// Called from setupImagePan.pressEnd when a tap lands while editing
+function pnHandleStageTap(clientX, clientY){
+  const t=pnTapToStage(clientX, clientY);
+  const hitR=PN_HIT_PX/imgT.scale, snapR=PN_SNAP_PX/imgT.scale;
+  // Status mode: pick an edge
+  if(pnStatusMode){
+    const e=pnNearestEdge(t.cx,t.cy,t.W,t.H,hitR*1.4);
+    if(e) pnOpenStatusForEdge(e.id); else pnCloseStatus();
+    return;
+  }
+  // Structure editor tools
+  if(pnTool==='add'){
+    const near=pnNearestNode(t.cx,t.cy,t.W,t.H,snapR);
+    if(near){ pnSelNode=near.id; renderPathNetwork(); showToast('Snapped to existing node'); return; }
+    const id=pnNewId('n');
+    pnNet().nodes.push({id, x:+t.xPct.toFixed(2), y:+t.yPct.toFixed(2)});
+    // auto-link to previously selected node for fast chaining
+    if(pnSelNode && pnGetNode(pnSelNode)) pnAddEdge(pnSelNode, id);
+    pnSelNode=id; pnChanged();
+    return;
+  }
+  if(pnTool==='link'){
+    const near=pnNearestNode(t.cx,t.cy,t.W,t.H,hitR);
+    if(!near){ pnSelNode=null; renderPathNetwork(); return; }
+    if(!pnSelNode || pnSelNode===near.id){ pnSelNode=near.id; renderPathNetwork(); return; }
+    pnAddEdge(pnSelNode, near.id); pnSelNode=near.id; pnChanged();
+    return;
+  }
+  if(pnTool==='move'){
+    const near=pnNearestNode(t.cx,t.cy,t.W,t.H,hitR);
+    if(near){ pnSelNode=near.id; renderPathNetwork(); showToast('Now tap the new spot'); return; }
+    if(pnSelNode){ const n=pnGetNode(pnSelNode); if(n){ n.x=+t.xPct.toFixed(2); n.y=+t.yPct.toFixed(2); pnSelNode=null; pnChanged(); } }
+    return;
+  }
+  if(pnTool==='delete'){
+    const near=pnNearestNode(t.cx,t.cy,t.W,t.H,hitR);
+    if(near){ pnDeleteNode(near.id); return; }
+    const e=pnNearestEdge(t.cx,t.cy,t.W,t.H,hitR*1.4);
+    if(e){ pnDeleteEdge(e.id); return; }
+  }
+}
+function pnAddEdge(aId,bId){
+  if(aId===bId) return;
+  const net=pnNet();
+  for(let i=0;i<net.edges.length;i++){
+    const e=net.edges[i];
+    if((e.a===aId&&e.b===bId)||(e.a===bId&&e.b===aId)) return; // already linked
+  }
+  net.edges.push({id:pnNewId('e'),a:aId,b:bId,closed:false,wheelchair:true,stroller:true,stairs:false,steep:false});
+}
+function pnDeleteEdge(id){
+  const net=pnNet(); net.edges=net.edges.filter(e=>e.id!==id);
+  if(pnStatusEdgeId===id) pnCloseStatus();
+  pnChanged();
+}
+function pnDeleteNode(id){
+  const net=pnNet();
+  net.nodes=net.nodes.filter(n=>n.id!==id);
+  net.edges=net.edges.filter(e=>e.a!==id&&e.b!==id);
+  if(pnSelNode===id) pnSelNode=null;
+  pnChanged();
+}
+
+// ── Editor lifecycle ──
+function pnOpenEditor(){
+  closeSetup();
+  isAdminMode=true;
+  document.getElementById('admin-badge').classList.add('visible');
+  if(currentView!=='image') switchView('image');
+  pnStatusMode=false; pnEditMode=true; pnSelNode=null; pnSetTool('add');
+  document.getElementById('pn-editor-bar').classList.add('visible');
+  document.getElementById('pn-status-panel').classList.remove('visible');
+  renderPathNetwork(); pnUpdateCountHint();
+  showToast('Path editor — tap to add nodes');
+}
+function pnExitEditor(){
+  pnEditMode=false; pnStatusMode=false; pnSelNode=null;
+  document.getElementById('pn-editor-bar').classList.remove('visible');
+  document.getElementById('pn-status-panel').classList.remove('visible');
+  renderPathNetwork();
+  if(!document.getElementById('admin-bar').classList.contains('visible')){
+    isAdminMode=false; document.getElementById('admin-badge').classList.remove('visible');
+  }
+  showToast('Path editor closed');
+}
+function pnSetTool(tool){
+  pnTool=tool; pnSelNode=null; pnStatusMode=false;
+  document.getElementById('pn-status-panel').classList.remove('visible');
+  ['add','link','move','delete'].forEach(function(tn){
+    const b=document.getElementById('pn-tool-'+tn); if(b) b.classList.toggle('active',tn===tool);
+  });
+  const hints={add:'Tap empty spots to drop nodes (auto-links in sequence). Tap near a node to continue from it.',
+    link:'Tap node A then node B to connect them.',
+    move:'Tap a node, then tap its new position.',
+    delete:'Tap a node (removes it + its paths) or tap a path to remove it.'};
+  pnSetHint(hints[tool]||'');
+  renderPathNetwork();
+}
+function pnSetHint(txt){ const el=document.getElementById('pn-editor-hint'); if(el) el.textContent=txt||''; }
+
+// ── Status panel (Tier 1) ──
+function pnOpenStatusForEdge(id){
+  const net=pnNet(); const e=net.edges.find(x=>x.id===id); if(!e) return;
+  pnStatusEdgeId=id;
+  document.getElementById('pn-st-closed').checked=!!e.closed;
+  document.getElementById('pn-st-wheelchair').checked=e.wheelchair!==false;
+  document.getElementById('pn-st-stroller').checked=e.stroller!==false;
+  document.getElementById('pn-st-stairs').checked=!!e.stairs;
+  document.getElementById('pn-st-steep').checked=!!e.steep;
+  document.getElementById('pn-status-panel').classList.add('visible');
+}
+function pnCloseStatus(){ pnStatusEdgeId=null; document.getElementById('pn-status-panel').classList.remove('visible'); }
+function pnToggleAttr(attr,val){
+  const net=pnNet(); const e=net.edges.find(x=>x.id===pnStatusEdgeId); if(!e) return;
+  e[attr]=val; pnChanged();
+}
+// Enter the status (Tier 1) tool from the editor bar
+function pnEnterStatusMode(){
+  pnStatusMode=true; pnEditMode=true; pnSelNode=null;
+  ['add','link','move','delete'].forEach(function(tn){ const b=document.getElementById('pn-tool-'+tn); if(b) b.classList.remove('active'); });
+  pnSetHint('Tap a path to change its open/closed & accessibility status.');
+  renderPathNetwork();
+}
+
+// ── Validation / health check ──
+function pnValidate(){
+  const net=pnNet();
+  if(!net.nodes.length){ showToast('No nodes yet — draw some paths first'); return; }
+  // adjacency
+  const adj={}; net.nodes.forEach(n=>adj[n.id]=[]);
+  net.edges.forEach(e=>{ if(adj[e.a]&&adj[e.b]){ adj[e.a].push(e.b); adj[e.b].push(e.a); } });
+  const orphan=net.nodes.filter(n=>adj[n.id].length===0).length;
+  // connected components (BFS)
+  const seen={}; let comps=0;
+  net.nodes.forEach(function(n){
+    if(seen[n.id]) return; comps++;
+    const q=[n.id]; seen[n.id]=1;
+    while(q.length){ const c=q.pop(); adj[c].forEach(function(nb){ if(!seen[nb]){ seen[nb]=1; q.push(nb); } }); }
+  });
+  let msg=net.nodes.length+' nodes · '+net.edges.length+' paths\n';
+  msg+=(orphan?('⚠ '+orphan+' orphan node(s)'):'✓ no orphan nodes')+'\n';
+  msg+=(comps>1?('⚠ '+comps+' disconnected groups'):'✓ network is fully connected');
+  alert(msg);
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -3807,7 +4141,7 @@ function renderPoiImgPins(){
     pin.className='poi-pin poi-pin-img';
     pin.style.left=px+'%'; pin.style.top=py+'%';
     pin.innerHTML=poiSvgImage(cat)+(cfg.showLabels!==false?`<div class="pin-label">${poiName(poi)}</div>`:'');
-    pin.addEventListener('click',e=>{ e.stopPropagation(); if(window._mapDragMoved) return; if(!placingPin&&!placingPoiPin) openPoiPopup(idx); });
+    pin.addEventListener('click',e=>{ e.stopPropagation(); if(window._mapDragMoved) return; if(pnEditActive()) return; if(!placingPin&&!placingPoiPin) openPoiPopup(idx); });
     con.appendChild(pin);
   });
 }
