@@ -180,6 +180,19 @@ body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:
 #route-chip .route-clear:hover{opacity:1;background:rgba(255,255,255,0.1)}
 .route-prof{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);border-radius:50%;width:30px;height:30px;font-size:14px;cursor:pointer;padding:0;line-height:1;color:#fff;opacity:0.55}
 .route-prof.active{background:var(--green-mid);border-color:var(--green-light);opacity:1}
+#route-pass{font-size:13px;opacity:.85}
+.walk-row{display:flex;align-items:center;gap:8px}
+.tour-add-btn{display:none;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:var(--cream);width:38px;height:38px;border-radius:10px;font-size:16px;cursor:pointer;flex-shrink:0;margin-top:8px}
+.tour-add-btn.visible{display:inline-block}
+.tour-add-btn:active{background:var(--green-mid)}
+#tour-bar{position:absolute;left:50%;transform:translateX(-50%);bottom:132px;width:min(380px,92vw);display:none;align-items:center;gap:8px;background:rgba(13,31,23,.95);backdrop-filter:blur(10px);border:1px solid rgba(82,183,136,.4);border-radius:14px;padding:8px 12px;z-index:610;pointer-events:all;box-shadow:0 4px 14px rgba(0,0,0,.4);font-family:var(--font-body);font-size:13px;color:var(--cream)}
+#tour-bar.visible{display:flex}
+.tour-btn{background:var(--green-mid);border:none;color:#fff;font-size:12px;font-weight:700;padding:7px 12px;border-radius:9px;cursor:pointer;flex-shrink:0}
+.tour-btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.7)}
+#search-nearest{display:none;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
+#search-nearest .nearest-label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:rgba(255,255,255,.45);width:100%}
+.nearest-chip{background:rgba(82,183,136,.15);border:1px solid rgba(82,183,136,.4);color:var(--cream);font-size:12px;padding:7px 11px;border-radius:18px;cursor:pointer;font-family:var(--font-body)}
+.nearest-chip:active{background:rgba(82,183,136,.3)}
 
 /* Endanger badge */
 #enc-endanger-wrap{display:inline-flex;align-items:center;gap:7px;border-radius:20px;padding:5px 13px;margin-bottom:14px;font-size:12px;font-weight:700}
@@ -454,6 +467,7 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
         oninput="runSearch()" onkeydown="if(event.key==='Escape')closeSearchPanel()">
       <button id="search-close" onclick="closeSearchPanel()" title="Close">×</button>
     </div>
+    <div id="search-nearest"></div>
     <div id="search-results"></div>
   </div>
   <div id="admin-badge">⚙ ADMIN</div>
@@ -567,7 +581,10 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
         <div id="enc-latin"></div>
         <div id="enc-tree"></div>
 
-        <button id="enc-walk-btn" class="walk-here-btn" onclick="walkToCurrentEnc()"></button>
+        <div class="walk-row">
+          <button id="enc-walk-btn" class="walk-here-btn" onclick="walkToCurrentEnc()"></button>
+          <button id="enc-tour-btn" class="tour-add-btn" onclick="tourAddCurrentEnc()" title="Add to tour">➕</button>
+        </div>
 
         <div id="enc-endanger-wrap" style="display:none"></div>
 
@@ -1095,7 +1112,10 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
             <div id="poi-cat-label"></div>
           </div>
         </div>
-        <button id="poi-walk-btn" class="walk-here-btn" onclick="walkToCurrentPoi()"></button>
+        <div class="walk-row">
+          <button id="poi-walk-btn" class="walk-here-btn" onclick="walkToCurrentPoi()"></button>
+          <button id="poi-tour-btn" class="tour-add-btn" onclick="tourAddCurrentPoi()" title="Add to tour">➕</button>
+        </div>
         <div id="poi-desc"></div>
       </div>
     </div>
@@ -1107,7 +1127,17 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
     <span class="route-num" id="route-dist">— m</span>
     <span style="opacity:0.5">·</span>
     <span class="route-num" id="route-time">— min</span>
+    <span id="route-pass" style="display:none"></span>
     <button class="route-clear" onclick="clearRoute()" title="Clear route">×</button>
+  </div>
+
+  <!-- ══ TOUR BAR (multi-stop) ══ -->
+  <div id="tour-bar">
+    <span id="tour-icon">🗺️</span>
+    <span id="tour-count">0 stops</span>
+    <span id="tour-status" style="opacity:.7;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <button id="tour-start" class="tour-btn" onclick="tourStart()">Start</button>
+    <button id="tour-clear" class="tour-btn ghost" onclick="tourClear()">Clear</button>
   </div>
 
   <!-- ══ EXPORT CHOOSER MODAL ══ -->
@@ -2149,6 +2179,7 @@ function openSearchPanel(){
   document.getElementById('search-panel').classList.add('open');
   const input=document.getElementById('search-input');
   input.value=''; input.focus();
+  renderNearestChips();
   runSearch();
 }
 function closeSearchPanel(){
@@ -2639,6 +2670,7 @@ function pnRenderRoute(){
     if(lls.length>1) _routeGpsLine=L.polyline(lls,{color:'#f4a261',weight:5,opacity:0.85,lineCap:'round'}).addTo(lMap);
   }
   pnUpdateRouteChip();
+  pnRouteAmenities();
 }
 function pnUpdateRouteChip(){
   const chip=document.getElementById('route-chip'); if(!chip) return;
@@ -2706,6 +2738,113 @@ function walkToCurrentPoi(){
   walkToItem(poi, poiName(poi));
 }
 
+// ── Nearest amenity (route to closest POI of a category by walking distance) ──
+function renderNearestChips(){
+  const host=document.getElementById('search-nearest'); if(!host) return;
+  if(pnNet().nodes.length<2){ host.style.display='none'; host.innerHTML=''; return; }
+  const cats=categories.filter(function(c){ return pois.some(function(p){ return p.categoryId===c.id && pnToPct(p); }); });
+  if(!cats.length){ host.style.display='none'; host.innerHTML=''; return; }
+  let h='<div class="nearest-label">Nearest</div>';
+  cats.forEach(function(c){ h+='<button class="nearest-chip" onclick="findNearest(\''+c.id+'\')">'+(c.emoji||'📍')+' '+catName(c).replace(/</g,'&lt;')+'</button>'; });
+  host.innerHTML=h; host.style.display='flex';
+}
+function findNearest(categoryId){
+  const start=pnUserPct();
+  if(!start){ if(!locationTracking && typeof startTracking==='function') startTracking(); showToast('Enable location to find the nearest'); return; }
+  let best=null, bestM=Infinity, bestPoi=null;
+  pois.forEach(function(p){
+    if(p.categoryId!==categoryId) return;
+    const dp=pnToPct(p); if(!dp) return;
+    const r=pnRoute(start,dp,_route.profile);
+    if(r && r.meters<bestM){ bestM=r.meters; best=r; bestPoi=p; }
+  });
+  if(!best){ showToast('No reachable place found'); return; }
+  closeSearchPanel();
+  _route.active=true; _route.destPct=pnToPct(bestPoi); _route.destName=poiName(bestPoi);
+  _route.pts=best.pts; _route.meters=best.meters; _route.lastCalcT=Date.now();
+  pnRenderRoute();
+  if(currentView==='gps' && _routeGpsLine){ try{ lMap.fitBounds(_routeGpsLine.getBounds(),{padding:[50,50],maxZoom:19}); }catch(_){} }
+  showToast('→ '+poiName(bestPoi)+' ('+Math.round(best.meters)+' m)');
+}
+
+// ── Amenities you'll pass along the active route ──
+function pnRouteAmenities(){
+  const host=document.getElementById('route-pass'); if(!host) return;
+  if(!_route.active || !_route.pts.length){ host.style.display='none'; host.innerHTML=''; return; }
+  const seen={};
+  pois.forEach(function(p){
+    const dp=pnToPct(p); if(!dp) return;
+    if(_route.destPct && Math.abs(dp.x-_route.destPct.x)<0.2 && Math.abs(dp.y-_route.destPct.y)<0.2) return; // skip destination
+    let best=Infinity;
+    for(let i=0;i<_route.pts.length;i++){ const d=pnMeters(dp.x,dp.y,_route.pts[i].x,_route.pts[i].y); if(d<best) best=d; }
+    if(best<=25){ const c=getCatById(p.categoryId); if(c) seen[c.id]=c.emoji||'📍'; }
+  });
+  const emojis=Object.keys(seen).map(function(k){ return seen[k]; });
+  if(!emojis.length){ host.style.display='none'; host.innerHTML=''; return; }
+  host.innerHTML='<span style="opacity:.55">·</span> '+emojis.join(' ');
+  host.style.display='';
+}
+
+// ── Arrival detection + tour auto-advance ──
+const ARRIVE_M=12;
+function pnCheckArrival(){
+  if(!_route.active || !_route.destPct || !userLatLng) return;
+  const up=pnUserPct(); if(!up) return;
+  if(pnMeters(up.x,up.y,_route.destPct.x,_route.destPct.y) > ARRIVE_M) return;
+  showToast('✓ Arrived at '+(_route.destName||'destination'));
+  if(_tour.active) tourAdvance(); else clearRoute();
+}
+
+// ── Multi-stop tour ──
+let _tour={active:false, stops:[], idx:0};
+function tourAdd(item,name){
+  const pct=pnToPct(item); if(!pct){ showToast('No location for this place'); return; }
+  _tour.stops.push({pct:pct, name:name||''});
+  renderTourBar(); showToast('Added to tour ('+_tour.stops.length+')');
+}
+function tourAddCurrentEnc(){ const e=enclosures[_currentEncIdx]; if(e){ closeEncPopup(); tourAdd(e,encName(e)); } }
+function tourAddCurrentPoi(){ const p=pois[_currentPoiIdx]; if(p){ closePoiPopup(); tourAdd(p,poiName(p)); } }
+function tourClear(){ _tour={active:false,stops:[],idx:0}; clearRoute(); renderTourBar(); }
+function renderTourBar(){
+  const bar=document.getElementById('tour-bar'); if(!bar) return;
+  if(!_tour.stops.length){ bar.classList.remove('visible'); return; }
+  bar.classList.add('visible');
+  document.getElementById('tour-count').textContent=_tour.stops.length+' stop'+(_tour.stops.length>1?'s':'');
+  const st=document.getElementById('tour-status');
+  const cur=_tour.stops[_tour.idx];
+  st.textContent=_tour.active ? (cur?('→ '+cur.name+'  ('+(_tour.idx+1)+'/'+_tour.stops.length+')'):'done') : '';
+  document.getElementById('tour-start').textContent=_tour.active?'Restart':'Start';
+}
+function tourOptimize(startPct){
+  function dist(a,b){ const r=pnRoute(a,b,_route.profile); return r?r.meters:Infinity; }
+  const remaining=_tour.stops.slice(); const order=[]; let cur=startPct;
+  while(remaining.length){
+    let bi=0,bd=Infinity;
+    for(let i=0;i<remaining.length;i++){ const d=dist(cur,remaining[i].pct); if(d<bd){ bd=d; bi=i; } }
+    order.push(remaining[bi]); cur=remaining[bi].pct; remaining.splice(bi,1);
+  }
+  _tour.stops=order;
+}
+function tourStart(){
+  if(!_tour.stops.length) return;
+  const start=pnUserPct();
+  if(!start){ if(!locationTracking && typeof startTracking==='function') startTracking(); showToast('Enable location to start the tour'); return; }
+  if(pnNet().nodes.length<2){ showToast('No paths drawn yet'); return; }
+  tourOptimize(start);
+  _tour.active=true; _tour.idx=0;
+  tourRouteToCurrent(); renderTourBar();
+}
+function tourAdvance(){
+  _tour.idx++;
+  if(_tour.idx>=_tour.stops.length){ showToast('🎉 Tour complete!'); tourClear(); return; }
+  tourRouteToCurrent(); renderTourBar();
+}
+function tourRouteToCurrent(){
+  const stop=_tour.stops[_tour.idx]; if(!stop) return;
+  _route.active=true; _route.destPct=stop.pct; _route.destName=stop.name;
+  recomputeRoute();
+}
+
 // ════════════════════════════════════════════════════════════════════
 // ENCLOSURE POPUP
 // ════════════════════════════════════════════════════════════════════
@@ -2724,8 +2863,10 @@ function setText(id,val){ const el=document.getElementById(id); if(el) el.textCo
 function openEncPopup(idx){
   const enc=enclosures[idx]; if(!enc) return;
   _currentEncIdx = idx;
+  const _routable = !!pnToPct(enc) && pnNet().nodes.length>1;
   const wb=document.getElementById('enc-walk-btn');
-  if(wb){ wb.textContent='🧭 '+t('directions'); wb.classList.toggle('visible', !!pnToPct(enc) && pnNet().nodes.length>1); }
+  if(wb){ wb.textContent='🧭 '+t('directions'); wb.classList.toggle('visible', _routable); }
+  const tb=document.getElementById('enc-tour-btn'); if(tb) tb.classList.toggle('visible', _routable);
   const l=cfg.currentLang||'cs';
   const i18n=enc.i18n?.[l]||enc.i18n?.[cfg.defaultLang]||{};
 
@@ -3057,7 +3198,7 @@ function updateRecenterBtn(){
 
 function updateUserDot(){
   if(!userLatLng) return;
-  try{ maybeRecalcRoute(); }catch(_){}
+  try{ maybeRecalcRoute(); pnCheckArrival(); }catch(_){}
 
   // ── GPS view ──
   if(currentView==='gps' && lMap){
@@ -4261,8 +4402,10 @@ function renderPoiMapMarkers(){
 function openPoiPopup(idx){
   const poi=pois[idx]; if(!poi) return;
   _currentPoiIdx = idx;
+  const _routableP = !!pnToPct(poi) && pnNet().nodes.length>1;
   const wb=document.getElementById('poi-walk-btn');
-  if(wb){ wb.textContent='🧭 '+t('directions'); wb.classList.toggle('visible', !!pnToPct(poi) && pnNet().nodes.length>1); }
+  if(wb){ wb.textContent='🧭 '+t('directions'); wb.classList.toggle('visible', _routableP); }
+  const tb=document.getElementById('poi-tour-btn'); if(tb) tb.classList.toggle('visible', _routableP);
   const cat=getCatById(poi.categoryId)||{emoji:'📍',color:'#2d6a4f'};
   const l=cfg.currentLang||cfg.defaultLang||'cs';
   const i18n=poi.i18n?.[l]||poi.i18n?.[cfg.defaultLang]||{};
