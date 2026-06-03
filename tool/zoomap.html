@@ -516,6 +516,8 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
         <div id="enc-latin"></div>
         <div id="enc-tree"></div>
 
+        <button id="enc-walk-btn" class="walk-here-btn" onclick="walkToCurrentEnc()"></button>
+
         <div id="enc-endanger-wrap" style="display:none"></div>
 
         <div id="enc-anecdote-wrap" style="display:none">
@@ -531,8 +533,6 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
           <div id="enc-adoption-desc"></div>
           <button id="enc-adoption-btn" onclick="openAdoptionLink()"></button>
         </div>
-
-        <button id="enc-walk-btn" class="walk-here-btn" onclick="walkToCurrentEnc()">🧭 Directions</button>
 
         <div id="enc-animals-section" style="display:none">
           <div class="enc-section-title"></div>
@@ -1035,8 +1035,8 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
             <div id="poi-cat-label"></div>
           </div>
         </div>
+        <button id="poi-walk-btn" class="walk-here-btn" onclick="walkToCurrentPoi()"></button>
         <div id="poi-desc"></div>
-        <button id="poi-walk-btn" class="walk-here-btn" onclick="walkToCurrentPoi()">🧭 Directions</button>
       </div>
     </div>
   </div>
@@ -1162,7 +1162,7 @@ const LANG_NAMES={en:'English',fr:'Français',de:'Deutsch',es:'Español',it:'Ita
 // ════════════════════════════════════════════════════════════════════
 const UI_STRINGS={
   en:{weight:'Weight',size:'Size',lifespan:'Lifespan',habitat:'Habitat',food:'Food',location:'Location',
-      residents:'Residents',adoptMe:'Adopt Me',adopt:'Adopt',age:'Age',
+      residents:'Residents',adoptMe:'Adopt Me',adopt:'Adopt',age:'Age',directions:'Directions',
       endangerEX:'Extinct',endangerCR:'Critically Endangered',endangerEN:'Endangered',endangerVU:'Vulnerable',endangerNT:'Near Threatened',endangerLC:'Least Concern',
       enclosures:'Enclosures',layers:'Layers',
       mapBtn:'Map',gpsBtn:'GPS',
@@ -1170,7 +1170,7 @@ const UI_STRINGS={
       gpsNotAvailable:'GPS not available on this device',gpsDenied:'Location permission denied',gpsError:'GPS error',
       noMapImage:'No map image configured.'},
   cs:{weight:'Hmotnost',size:'Velikost',lifespan:'Délka života',habitat:'Prostředí',food:'Potrava',location:'Umístění',
-      residents:'Obyvatelé',adoptMe:'Adoptujte mě',adopt:'Adoptovat',age:'Věk',
+      residents:'Obyvatelé',adoptMe:'Adoptujte mě',adopt:'Adoptovat',age:'Věk',directions:'Navigovat',
       endangerEX:'Vyhynulý',endangerCR:'Kriticky ohrožený',endangerEN:'Ohrožený',endangerVU:'Zranitelný',endangerNT:'Téměř ohrožený',endangerLC:'Málo dotčený',
       enclosures:'Výběhy',layers:'Vrstvy',
       mapBtn:'Mapa',gpsBtn:'GPS',
@@ -1178,7 +1178,7 @@ const UI_STRINGS={
       gpsNotAvailable:'GPS není na tomto zařízení k dispozici',gpsDenied:'Přístup k poloze byl odepřen',gpsError:'Chyba GPS',
       noMapImage:'Mapa není nastavena.'},
   fr:{weight:'Poids',size:'Taille',lifespan:'Espérance de vie',habitat:'Habitat',food:'Alimentation',location:'Localisation',
-      residents:'Résidents',adoptMe:'Adoptez-moi',adopt:'Adopter',age:'Âge',
+      residents:'Résidents',adoptMe:'Adoptez-moi',adopt:'Adopter',age:'Âge',directions:'Itinéraire',
       endangerEX:'Éteint',endangerCR:'En danger critique',endangerEN:'En danger',endangerVU:'Vulnérable',endangerNT:'Quasi menacé',endangerLC:'Préoccupation mineure',
       enclosures:'Enclos',layers:'Couches',
       mapBtn:'Carte',gpsBtn:'GPS',
@@ -1186,7 +1186,7 @@ const UI_STRINGS={
       gpsNotAvailable:'GPS non disponible sur cet appareil',gpsDenied:'Accès à la localisation refusé',gpsError:'Erreur GPS',
       noMapImage:'Aucune carte configurée.'},
   de:{weight:'Gewicht',size:'Größe',lifespan:'Lebensdauer',habitat:'Lebensraum',food:'Nahrung',location:'Standort',
-      residents:'Bewohner',adoptMe:'Adoptiere mich',adopt:'Adoptieren',age:'Alter',
+      residents:'Bewohner',adoptMe:'Adoptiere mich',adopt:'Adoptieren',age:'Alter',directions:'Route',
       endangerEX:'Ausgestorben',endangerCR:'Vom Aussterben bedroht',endangerEN:'Stark gefährdet',endangerVU:'Gefährdet',endangerNT:'Potenziell gefährdet',endangerLC:'Nicht gefährdet',
       enclosures:'Gehege',layers:'Ebenen',
       mapBtn:'Karte',gpsBtn:'GPS',
@@ -1194,7 +1194,7 @@ const UI_STRINGS={
       gpsNotAvailable:'GPS auf diesem Gerät nicht verfügbar',gpsDenied:'Standortzugriff verweigert',gpsError:'GPS-Fehler',
       noMapImage:'Keine Karte konfiguriert.'},
   es:{weight:'Peso',size:'Tamaño',lifespan:'Esperanza de vida',habitat:'Hábitat',food:'Alimentación',location:'Ubicación',
-      residents:'Residentes',adoptMe:'Adóptame',adopt:'Adoptar',age:'Edad',
+      residents:'Residentes',adoptMe:'Adóptame',adopt:'Adoptar',age:'Edad',directions:'Cómo llegar',
       endangerEX:'Extinto',endangerCR:'En peligro crítico',endangerEN:'En peligro',endangerVU:'Vulnerable',endangerNT:'Casi amenazado',endangerLC:'Preocupación menor',
       enclosures:'Recintos',layers:'Capas',
       mapBtn:'Mapa',gpsBtn:'GPS',
@@ -1202,7 +1202,7 @@ const UI_STRINGS={
       gpsNotAvailable:'GPS no disponible en este dispositivo',gpsDenied:'Acceso a la ubicación denegado',gpsError:'Error de GPS',
       noMapImage:'Mapa no configurado.'},
   it:{weight:'Peso',size:'Dimensione',lifespan:'Longevità',habitat:'Habitat',food:'Alimentazione',location:'Posizione',
-      residents:'Residenti',adoptMe:'Adottami',adopt:'Adotta',age:'Età',
+      residents:'Residenti',adoptMe:'Adottami',adopt:'Adotta',age:'Età',directions:'Indicazioni',
       endangerEX:'Estinto',endangerCR:'In pericolo critico',endangerEN:'In pericolo',endangerVU:'Vulnerabile',endangerNT:'Quasi minacciato',endangerLC:'Minimo rischio',
       enclosures:'Recinti',layers:'Livelli',
       mapBtn:'Mappa',gpsBtn:'GPS',
@@ -1210,7 +1210,7 @@ const UI_STRINGS={
       gpsNotAvailable:'GPS non disponibile su questo dispositivo',gpsDenied:'Accesso alla posizione negato',gpsError:'Errore GPS',
       noMapImage:'Mappa non configurata.'},
   pt:{weight:'Peso',size:'Tamanho',lifespan:'Longevidade',habitat:'Habitat',food:'Alimentação',location:'Localização',
-      residents:'Residentes',adoptMe:'Adopta-me',adopt:'Adoptar',age:'Idade',
+      residents:'Residentes',adoptMe:'Adopta-me',adopt:'Adoptar',age:'Idade',directions:'Como chegar',
       endangerEX:'Extinto',endangerCR:'Criticamente em perigo',endangerEN:'Em perigo',endangerVU:'Vulnerável',endangerNT:'Quase ameaçado',endangerLC:'Pouco preocupante',
       enclosures:'Recintos',layers:'Camadas',
       mapBtn:'Mapa',gpsBtn:'GPS',
@@ -1218,7 +1218,7 @@ const UI_STRINGS={
       gpsNotAvailable:'GPS não disponível neste dispositivo',gpsDenied:'Acesso à localização negado',gpsError:'Erro de GPS',
       noMapImage:'Mapa não configurado.'},
   nl:{weight:'Gewicht',size:'Grootte',lifespan:'Levensduur',habitat:'Leefgebied',food:'Voedsel',location:'Locatie',
-      residents:'Bewoners',adoptMe:'Adopteer mij',adopt:'Adopteren',age:'Leeftijd',
+      residents:'Bewoners',adoptMe:'Adopteer mij',adopt:'Adopteren',age:'Leeftijd',directions:'Route',
       endangerEX:'Uitgestorven',endangerCR:'Ernstig bedreigd',endangerEN:'Bedreigd',endangerVU:'Kwetsbaar',endangerNT:'Gevoelig',endangerLC:'Niet bedreigd',
       enclosures:'Verblijven',layers:'Lagen',
       mapBtn:'Kaart',gpsBtn:'GPS',
@@ -1226,7 +1226,7 @@ const UI_STRINGS={
       gpsNotAvailable:'GPS niet beschikbaar op dit apparaat',gpsDenied:'Locatietoegang geweigerd',gpsError:'GPS-fout',
       noMapImage:'Geen kaart geconfigureerd.'},
   ru:{weight:'Вес',size:'Размер',lifespan:'Продолжительность жизни',habitat:'Среда обитания',food:'Питание',location:'Расположение',
-      residents:'Обитатели',adoptMe:'Усынови меня',adopt:'Усыновить',age:'Возраст',
+      residents:'Обитатели',adoptMe:'Усынови меня',adopt:'Усыновить',age:'Возраст',directions:'Маршрут',
       endangerEX:'Вымерший',endangerCR:'На грани исчезновения',endangerEN:'Под угрозой',endangerVU:'Уязвимый',endangerNT:'Близок к угрозе',endangerLC:'Вне опасности',
       enclosures:'Вольеры',layers:'Слои',
       mapBtn:'Карта',gpsBtn:'GPS',
@@ -1234,7 +1234,7 @@ const UI_STRINGS={
       gpsNotAvailable:'GPS недоступен на этом устройстве',gpsDenied:'Доступ к местоположению запрещён',gpsError:'Ошибка GPS',
       noMapImage:'Карта не настроена.'},
   zh:{weight:'体重',size:'体型',lifespan:'寿命',habitat:'栖息地',food:'食物',location:'位置',
-      residents:'居民',adoptMe:'认养我',adopt:'认养',age:'年龄',
+      residents:'居民',adoptMe:'认养我',adopt:'认养',age:'年龄',directions:'路线',
       endangerEX:'已灭绝',endangerCR:'极危',endangerEN:'濒危',endangerVU:'易危',endangerNT:'近危',endangerLC:'无危',
       enclosures:'展区',layers:'图层',
       mapBtn:'地图',gpsBtn:'GPS',
@@ -1242,7 +1242,7 @@ const UI_STRINGS={
       gpsNotAvailable:'此设备不支持 GPS',gpsDenied:'位置权限被拒绝',gpsError:'GPS 错误',
       noMapImage:'未配置地图。'},
   ja:{weight:'体重',size:'大きさ',lifespan:'寿命',habitat:'生息地',food:'食性',location:'場所',
-      residents:'住人',adoptMe:'里親になって',adopt:'里親になる',age:'年齢',
+      residents:'住人',adoptMe:'里親になって',adopt:'里親になる',age:'年齢',directions:'ルート',
       endangerEX:'絶滅',endangerCR:'絶滅寸前',endangerEN:'絶滅危惧',endangerVU:'危急',endangerNT:'準絶滅危惧',endangerLC:'低懸念',
       enclosures:'飼育場',layers:'レイヤー',
       mapBtn:'地図',gpsBtn:'GPS',
@@ -1250,7 +1250,7 @@ const UI_STRINGS={
       gpsNotAvailable:'このデバイスではGPSが利用できません',gpsDenied:'位置情報の許可が拒否されました',gpsError:'GPSエラー',
       noMapImage:'マップが設定されていません。'},
   ar:{weight:'الوزن',size:'الحجم',lifespan:'العمر',habitat:'الموطن',food:'الغذاء',location:'الموقع',
-      residents:'السكان',adoptMe:'تبنَّني',adopt:'تبنَّ',age:'العمر',
+      residents:'السكان',adoptMe:'تبنَّني',adopt:'تبنَّ',age:'العمر',directions:'الاتجاهات',
       endangerEX:'منقرض',endangerCR:'مهدد بشدة',endangerEN:'مهدد',endangerVU:'عرضة للخطر',endangerNT:'قريب من التهديد',endangerLC:'غير مهدد',
       enclosures:'الحظائر',layers:'الطبقات',
       mapBtn:'الخريطة',gpsBtn:'GPS',
@@ -1258,7 +1258,7 @@ const UI_STRINGS={
       gpsNotAvailable:'GPS غير متاح على هذا الجهاز',gpsDenied:'تم رفض إذن الموقع',gpsError:'خطأ في GPS',
       noMapImage:'لم يتم إعداد الخريطة.'},
   ko:{weight:'무게',size:'크기',lifespan:'수명',habitat:'서식지',food:'먹이',location:'위치',
-      residents:'거주자',adoptMe:'저를 입양해 주세요',adopt:'입양하기',age:'나이',
+      residents:'거주자',adoptMe:'저를 입양해 주세요',adopt:'입양하기',age:'나이',directions:'길찾기',
       endangerEX:'멸종',endangerCR:'위급',endangerEN:'위기',endangerVU:'취약',endangerNT:'준위협',endangerLC:'관심 필요 없음',
       enclosures:'사육장',layers:'레이어',
       mapBtn:'지도',gpsBtn:'GPS',
@@ -2298,7 +2298,7 @@ function openEncPopup(idx){
   const enc=enclosures[idx]; if(!enc) return;
   _currentEncIdx = idx;
   const wb=document.getElementById('enc-walk-btn');
-  if(wb){ wb.classList.toggle('visible', !!(enc.gps && enc.gps[0]!=null)); }
+  if(wb){ wb.textContent='🧭 '+t('directions'); wb.classList.toggle('visible', !!(enc.gps && enc.gps[0]!=null)); }
   const l=cfg.currentLang||'cs';
   const i18n=enc.i18n?.[l]||enc.i18n?.[cfg.defaultLang]||{};
 
@@ -3835,7 +3835,7 @@ function openPoiPopup(idx){
   const poi=pois[idx]; if(!poi) return;
   _currentPoiIdx = idx;
   const wb=document.getElementById('poi-walk-btn');
-  if(wb){ wb.classList.toggle('visible', !!(poi.gps && poi.gps[0]!=null)); }
+  if(wb){ wb.textContent='🧭 '+t('directions'); wb.classList.toggle('visible', !!(poi.gps && poi.gps[0]!=null)); }
   const cat=getCatById(poi.categoryId)||{emoji:'📍',color:'#2d6a4f'};
   const l=cfg.currentLang||cfg.defaultLang||'cs';
   const i18n=poi.i18n?.[l]||poi.i18n?.[cfg.defaultLang]||{};
@@ -4273,6 +4273,7 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
         <div id="enc-title"></div>
         <div id="enc-latin"></div>
         <div id="enc-tree"></div>
+        <button id="enc-walk-btn" class="walk-here-btn" onclick="walkToCurrentEnc()"></button>
         <div id="enc-endanger-wrap" style="display:none"></div>
         <div id="enc-anecdote-wrap" style="display:none"><div id="enc-anecdote"></div></div>
         <div class="enc-stats" id="enc-stats-list"></div>
@@ -4282,7 +4283,6 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
           <div id="enc-adoption-desc"></div>
           <button id="enc-adoption-btn" onclick="openAdoptionLink()"></button>
         </div>
-        <button id="enc-walk-btn" class="walk-here-btn" onclick="walkToCurrentEnc()">🧭 Directions</button>
         <div id="enc-animals-section" style="display:none">
           <div class="enc-section-title" id="enc-residents-title"></div>
           <div id="enc-animals-list"></div>
@@ -4302,8 +4302,8 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
           <div id="poi-icon"></div>
           <div><div id="poi-title"></div><div id="poi-cat-label"></div></div>
         </div>
+        <button id="poi-walk-btn" class="walk-here-btn" onclick="walkToCurrentPoi()"></button>
         <div id="poi-desc"></div>
-        <button id="poi-walk-btn" class="walk-here-btn" onclick="walkToCurrentPoi()">🧭 Directions</button>
       </div>
     </div>
   </div>
@@ -5204,7 +5204,7 @@ function openPoiPopup(idx){
   const poi = pois[idx]; if(!poi) return;
   _currentPoiIdx = idx;
   const wb=document.getElementById('poi-walk-btn');
-  if(wb){ wb.classList.toggle('visible', !!(poi.gps && poi.gps[0]!=null)); }
+  if(wb){ wb.textContent='🧭 '+t('directions'); wb.classList.toggle('visible', !!(poi.gps && poi.gps[0]!=null)); }
   const cat = getCatById(poi.categoryId) || {emoji:'📍', color:'#2d6a4f'};
   const l = cfg.currentLang || cfg.defaultLang || 'cs';
   const i18n = (poi.i18n && (poi.i18n[l] || poi.i18n[cfg.defaultLang])) || {};
@@ -5261,7 +5261,7 @@ function openEncPopup(idx){
   const enc = enclosures[idx]; if(!enc) return;
   _currentEncIdx = idx;
   const wb=document.getElementById('enc-walk-btn');
-  if(wb){ wb.classList.toggle('visible', !!(enc.gps && enc.gps[0]!=null)); }
+  if(wb){ wb.textContent='🧭 '+t('directions'); wb.classList.toggle('visible', !!(enc.gps && enc.gps[0]!=null)); }
   const l = cfg.currentLang || cfg.defaultLang || 'cs';
   const i18n = (enc.i18n && (enc.i18n[l] || enc.i18n[cfg.defaultLang])) || {};
 
