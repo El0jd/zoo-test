@@ -181,7 +181,7 @@ body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:
 .route-prof{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);border-radius:50%;width:30px;height:30px;font-size:14px;cursor:pointer;padding:0;line-height:1;color:#fff;opacity:0.55}
 .route-prof.active{background:var(--green-mid);border-color:var(--green-light);opacity:1}
 #route-pass{font-size:13px;opacity:.85}
-.walk-row{display:flex;align-items:center;gap:8px}
+.walk-row{display:flex;align-items:center;gap:8px;margin-bottom:14px}
 .tour-add-btn{display:none;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:var(--cream);width:38px;height:38px;border-radius:10px;font-size:16px;cursor:pointer;flex-shrink:0;margin-top:8px}
 .tour-add-btn.visible{display:inline-block}
 .tour-add-btn:active{background:var(--green-mid)}
@@ -1579,7 +1579,7 @@ function switchView(v){
     applyOverlayToMap();
     renderMapPins();
     renderPoiMapMarkers();
-    if(isAdminMode&&cfg.overlayEnabled&&cfg.mapImageData&&!placingPin)
+    if(isAdminMode&&cfg.overlayEnabled&&cfg.mapImageData&&!placingPin&&!pnEditActive())
       document.getElementById('admin-bar').classList.add('visible');
     // Auto-resume tracking if the visitor previously opted in (visitor mode only)
     if(!isAdminMode && cfg.gpsPreference==='on' && !locationTracking) startTracking();
@@ -1588,10 +1588,10 @@ function switchView(v){
     document.getElementById('filter-panel').classList.remove('open');
     renderImgPins();
     renderPoiImgPins();
-    if(typeof renderPathNetwork==='function') renderPathNetwork();
   }
   updateUserDot();
   updateRecenterBtn();
+  if(typeof renderPathNetwork==='function') renderPathNetwork();
   if(typeof pnRenderRoute==='function') pnRenderRoute();
 }
 
@@ -2317,6 +2317,22 @@ function pnMeters(ax,ay,bx,by){
   return Math.sqrt(dxm*dxm+dym*dym);
 }
 function pnEdgeMeters(e){ const a=pnGetNode(e.a),b=pnGetNode(e.b); if(!a||!b) return Infinity; return pnMeters(a.x,a.y,b.x,b.y); }
+// GPS -> image-% WITHOUT the on-screen clamp, so nodes can be placed anywhere on
+// the GPS map (the visible-pin clamp in gpsToImgPercent would otherwise reject
+// points far from the overlay centre).
+function pnGpsToPctRaw(lat,lng){
+  if(!cfg.overlayGpsCenter) return null;
+  const cLat=cfg.overlayGpsCenter[0], cLng=cfg.overlayGpsCenter[1];
+  const mW=cfg.overlayMetersW||300, mH=cfg.overlayMetersH||200;
+  const mPerDegLat=EARTH_R*Math.PI/180;
+  const mPerDegLng=EARTH_R*Math.cos(cLat*Math.PI/180)*Math.PI/180;
+  if(!mPerDegLat||!mPerDegLng) return null;
+  const dx=(lng-cLng)*mPerDegLng, dy=(lat-cLat)*mPerDegLat;
+  const rad=-(cfg.overlayRotation||0)*Math.PI/180;
+  const rx= dx*Math.cos(rad) - dy*Math.sin(rad);
+  const ry= dx*Math.sin(rad) + dy*Math.cos(rad);
+  return { x:(rx/mW+1)*50, y:(-ry/mH+1)*50 };
+}
 
 // ── Rendering ──
 function pnEdgeColor(e){
@@ -2327,8 +2343,15 @@ function pnEdgeColor(e){
 function renderPathNetwork(){
   const svg=document.getElementById('path-net-svg');
   const ndiv=document.getElementById('path-net-nodes');
-  if(!svg||!ndiv) return;
   const show=pnEditActive();
+  // GPS view → render network as Leaflet layers (this is where editing happens now)
+  if(currentView==='gps'){
+    if(svg){ svg.style.display='none'; svg.innerHTML=''; }
+    if(ndiv){ ndiv.style.display='none'; ndiv.innerHTML=''; }
+    pnRenderNetGps();
+    return;
+  }
+  if(!svg||!ndiv) return;
   if(!show){ svg.style.display='none'; ndiv.style.display='none'; svg.innerHTML=''; ndiv.innerHTML=''; return; }
   const net=pnNet();
   const sz=(typeof getMapImageSize==='function')?getMapImageSize():{w:800,h:600};
@@ -2461,22 +2484,88 @@ function pnDeleteNode(id){
   pnChanged();
 }
 
+// ── GPS-map rendering + interaction (editing happens on the Leaflet map) ──
+let _pnGpsLayer=null, _pnMapClickBound=false;
+function pnClearGpsLayer(){ if(_pnGpsLayer && lMap){ lMap.removeLayer(_pnGpsLayer); } _pnGpsLayer=null; }
+function pnRenderNetGps(){
+  pnClearGpsLayer();
+  if(!lMap || !pnEditActive() || typeof L==='undefined') return;
+  const net=pnNet(); const grp=L.layerGroup();
+  for(let i=0;i<net.edges.length;i++){
+    const e=net.edges[i], a=pnGetNode(e.a), b=pnGetNode(e.b); if(!a||!b) continue;
+    const la=imgPercentToGps(a.x,a.y), lb=imgPercentToGps(b.x,b.y); if(!la||!lb) continue;
+    const poly=L.polyline([la,lb],{color:pnEdgeColor(e),weight:5,opacity:0.85,lineCap:'round',
+      dashArray:e.closed?'6,7':null, bubblingMouseEvents:false});
+    poly.on('click',function(ev){ L.DomEvent.stop(ev); pnEdgeTap(e.id); });
+    grp.addLayer(poly);
+  }
+  for(let i=0;i<net.nodes.length;i++){
+    const n=net.nodes[i], ll=imgPercentToGps(n.x,n.y); if(!ll) continue;
+    const sel=(pnSelNode===n.id);
+    const m=L.circleMarker(ll,{radius:sel?9:6,color:sel?'#e76f51':'#1a3a2a',weight:2,
+      fillColor:sel?'#f4a261':'#ffffff',fillOpacity:1, bubblingMouseEvents:false});
+    m.on('click',function(ev){ L.DomEvent.stop(ev); pnNodeTap(n.id); });
+    grp.addLayer(m);
+  }
+  grp.addTo(lMap); _pnGpsLayer=grp;
+}
+// Map click (empty area) while editing on the GPS map
+function pnMapClick(e){
+  if(!pnEditMode || pnStatusMode) return;
+  const p=pnGpsToPctRaw(e.latlng.lat, e.latlng.lng); if(!p) return;
+  if(pnTool==='add'){
+    const id=pnNewId('n');
+    pnNet().nodes.push({id:id, x:+p.x.toFixed(2), y:+p.y.toFixed(2)});
+    if(pnSelNode && pnGetNode(pnSelNode)) pnAddEdge(pnSelNode, id);
+    pnSelNode=id; pnChanged();
+  } else if(pnTool==='move' && pnSelNode){
+    const n=pnGetNode(pnSelNode); if(n){ n.x=+p.x.toFixed(2); n.y=+p.y.toFixed(2); pnSelNode=null; pnChanged(); }
+  } else { pnSelNode=null; pnRenderNetGps(); }
+}
+// Tap an existing node marker
+function pnNodeTap(id){
+  if(pnStatusMode) return;
+  if(pnTool==='link'){
+    if(!pnSelNode || pnSelNode===id){ pnSelNode=id; pnRenderNetGps(); return; }
+    pnAddEdge(pnSelNode, id); pnSelNode=id; pnChanged();
+  } else if(pnTool==='move'){
+    pnSelNode=id; pnRenderNetGps(); showToast('Now tap the new spot');
+  } else if(pnTool==='delete'){
+    pnDeleteNode(id);
+  } else { // add: continue chaining from this node
+    pnSelNode=id; pnRenderNetGps();
+  }
+}
+function pnEdgeTap(id){
+  if(pnStatusMode){ pnOpenStatusForEdge(id); return; }
+  if(pnTool==='delete'){ pnDeleteEdge(id); }
+}
+
 // ── Editor lifecycle ──
 function pnOpenEditor(){
   closeSetup();
   isAdminMode=true;
   document.getElementById('admin-badge').classList.add('visible');
-  if(currentView!=='image') switchView('image');
+  // Editing happens on the GPS map. Make sure we have a geo anchor so nodes
+  // resolve to lat/lng (uses the overlay centre, defaulting to the zoo centre).
+  if(!cfg.overlayGpsCenter){
+    cfg.overlayGpsCenter = (cfg.gpsCenter && cfg.gpsCenter.slice())
+      || (lMap ? [lMap.getCenter().lat, lMap.getCenter().lng] : [49.233,16.533]);
+  }
+  if(currentView!=='gps') switchView('gps');
+  applyOverlayToMap();   // show the zoo image as a drawing reference if available
+  if(lMap && !_pnMapClickBound){ lMap.on('click', pnMapClick); _pnMapClickBound=true; }
   pnStatusMode=false; pnEditMode=true; pnSelNode=null; pnSetTool('add');
   document.getElementById('pn-editor-bar').classList.add('visible');
   document.getElementById('pn-status-panel').classList.remove('visible');
   renderPathNetwork(); pnUpdateCountHint();
-  showToast('Path editor — tap to add nodes');
+  showToast('Path editor — tap the map to add nodes');
 }
 function pnExitEditor(){
   pnEditMode=false; pnStatusMode=false; pnSelNode=null;
   document.getElementById('pn-editor-bar').classList.remove('visible');
   document.getElementById('pn-status-panel').classList.remove('visible');
+  pnClearGpsLayer();
   renderPathNetwork();
   if(!document.getElementById('admin-bar').classList.contains('visible')){
     isAdminMode=false; document.getElementById('admin-badge').classList.remove('visible');
@@ -4700,7 +4789,7 @@ body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:
 .route-prof{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);border-radius:50%;width:30px;height:30px;font-size:14px;cursor:pointer;padding:0;line-height:1;color:#fff;opacity:0.55}
 .route-prof.active{background:var(--green-mid);border-color:var(--green-light);opacity:1}
 #route-pass{font-size:13px;opacity:.85}
-.walk-row{display:flex;align-items:center;gap:8px}
+.walk-row{display:flex;align-items:center;gap:8px;margin-bottom:14px}
 .tour-add-btn{display:none;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:var(--cream);width:38px;height:38px;border-radius:10px;font-size:16px;cursor:pointer;flex-shrink:0;margin-top:8px}
 .tour-add-btn.visible{display:inline-block}
 .tour-add-btn:active{background:var(--green-mid)}
@@ -5166,6 +5255,22 @@ function pnMeters(ax,ay,bx,by){
   return Math.sqrt(dxm*dxm+dym*dym);
 }
 function pnEdgeMeters(e){ const a=pnGetNode(e.a),b=pnGetNode(e.b); if(!a||!b) return Infinity; return pnMeters(a.x,a.y,b.x,b.y); }
+// GPS -> image-% WITHOUT the on-screen clamp, so nodes can be placed anywhere on
+// the GPS map (the visible-pin clamp in gpsToImgPercent would otherwise reject
+// points far from the overlay centre).
+function pnGpsToPctRaw(lat,lng){
+  if(!cfg.overlayGpsCenter) return null;
+  const cLat=cfg.overlayGpsCenter[0], cLng=cfg.overlayGpsCenter[1];
+  const mW=cfg.overlayMetersW||300, mH=cfg.overlayMetersH||200;
+  const mPerDegLat=EARTH_R*Math.PI/180;
+  const mPerDegLng=EARTH_R*Math.cos(cLat*Math.PI/180)*Math.PI/180;
+  if(!mPerDegLat||!mPerDegLng) return null;
+  const dx=(lng-cLng)*mPerDegLng, dy=(lat-cLat)*mPerDegLat;
+  const rad=-(cfg.overlayRotation||0)*Math.PI/180;
+  const rx= dx*Math.cos(rad) - dy*Math.sin(rad);
+  const ry= dx*Math.sin(rad) + dy*Math.cos(rad);
+  return { x:(rx/mW+1)*50, y:(-ry/mH+1)*50 };
+}
 
 // ── Rendering ──
 function pnEdgeColor(e){
@@ -5176,8 +5281,15 @@ function pnEdgeColor(e){
 function renderPathNetwork(){
   const svg=document.getElementById('path-net-svg');
   const ndiv=document.getElementById('path-net-nodes');
-  if(!svg||!ndiv) return;
   const show=pnEditActive();
+  // GPS view → render network as Leaflet layers (this is where editing happens now)
+  if(currentView==='gps'){
+    if(svg){ svg.style.display='none'; svg.innerHTML=''; }
+    if(ndiv){ ndiv.style.display='none'; ndiv.innerHTML=''; }
+    pnRenderNetGps();
+    return;
+  }
+  if(!svg||!ndiv) return;
   if(!show){ svg.style.display='none'; ndiv.style.display='none'; svg.innerHTML=''; ndiv.innerHTML=''; return; }
   const net=pnNet();
   const sz=(typeof getMapImageSize==='function')?getMapImageSize():{w:800,h:600};
@@ -5310,22 +5422,88 @@ function pnDeleteNode(id){
   pnChanged();
 }
 
+// ── GPS-map rendering + interaction (editing happens on the Leaflet map) ──
+let _pnGpsLayer=null, _pnMapClickBound=false;
+function pnClearGpsLayer(){ if(_pnGpsLayer && lMap){ lMap.removeLayer(_pnGpsLayer); } _pnGpsLayer=null; }
+function pnRenderNetGps(){
+  pnClearGpsLayer();
+  if(!lMap || !pnEditActive() || typeof L==='undefined') return;
+  const net=pnNet(); const grp=L.layerGroup();
+  for(let i=0;i<net.edges.length;i++){
+    const e=net.edges[i], a=pnGetNode(e.a), b=pnGetNode(e.b); if(!a||!b) continue;
+    const la=imgPercentToGps(a.x,a.y), lb=imgPercentToGps(b.x,b.y); if(!la||!lb) continue;
+    const poly=L.polyline([la,lb],{color:pnEdgeColor(e),weight:5,opacity:0.85,lineCap:'round',
+      dashArray:e.closed?'6,7':null, bubblingMouseEvents:false});
+    poly.on('click',function(ev){ L.DomEvent.stop(ev); pnEdgeTap(e.id); });
+    grp.addLayer(poly);
+  }
+  for(let i=0;i<net.nodes.length;i++){
+    const n=net.nodes[i], ll=imgPercentToGps(n.x,n.y); if(!ll) continue;
+    const sel=(pnSelNode===n.id);
+    const m=L.circleMarker(ll,{radius:sel?9:6,color:sel?'#e76f51':'#1a3a2a',weight:2,
+      fillColor:sel?'#f4a261':'#ffffff',fillOpacity:1, bubblingMouseEvents:false});
+    m.on('click',function(ev){ L.DomEvent.stop(ev); pnNodeTap(n.id); });
+    grp.addLayer(m);
+  }
+  grp.addTo(lMap); _pnGpsLayer=grp;
+}
+// Map click (empty area) while editing on the GPS map
+function pnMapClick(e){
+  if(!pnEditMode || pnStatusMode) return;
+  const p=pnGpsToPctRaw(e.latlng.lat, e.latlng.lng); if(!p) return;
+  if(pnTool==='add'){
+    const id=pnNewId('n');
+    pnNet().nodes.push({id:id, x:+p.x.toFixed(2), y:+p.y.toFixed(2)});
+    if(pnSelNode && pnGetNode(pnSelNode)) pnAddEdge(pnSelNode, id);
+    pnSelNode=id; pnChanged();
+  } else if(pnTool==='move' && pnSelNode){
+    const n=pnGetNode(pnSelNode); if(n){ n.x=+p.x.toFixed(2); n.y=+p.y.toFixed(2); pnSelNode=null; pnChanged(); }
+  } else { pnSelNode=null; pnRenderNetGps(); }
+}
+// Tap an existing node marker
+function pnNodeTap(id){
+  if(pnStatusMode) return;
+  if(pnTool==='link'){
+    if(!pnSelNode || pnSelNode===id){ pnSelNode=id; pnRenderNetGps(); return; }
+    pnAddEdge(pnSelNode, id); pnSelNode=id; pnChanged();
+  } else if(pnTool==='move'){
+    pnSelNode=id; pnRenderNetGps(); showToast('Now tap the new spot');
+  } else if(pnTool==='delete'){
+    pnDeleteNode(id);
+  } else { // add: continue chaining from this node
+    pnSelNode=id; pnRenderNetGps();
+  }
+}
+function pnEdgeTap(id){
+  if(pnStatusMode){ pnOpenStatusForEdge(id); return; }
+  if(pnTool==='delete'){ pnDeleteEdge(id); }
+}
+
 // ── Editor lifecycle ──
 function pnOpenEditor(){
   closeSetup();
   isAdminMode=true;
   document.getElementById('admin-badge').classList.add('visible');
-  if(currentView!=='image') switchView('image');
+  // Editing happens on the GPS map. Make sure we have a geo anchor so nodes
+  // resolve to lat/lng (uses the overlay centre, defaulting to the zoo centre).
+  if(!cfg.overlayGpsCenter){
+    cfg.overlayGpsCenter = (cfg.gpsCenter && cfg.gpsCenter.slice())
+      || (lMap ? [lMap.getCenter().lat, lMap.getCenter().lng] : [49.233,16.533]);
+  }
+  if(currentView!=='gps') switchView('gps');
+  applyOverlayToMap();   // show the zoo image as a drawing reference if available
+  if(lMap && !_pnMapClickBound){ lMap.on('click', pnMapClick); _pnMapClickBound=true; }
   pnStatusMode=false; pnEditMode=true; pnSelNode=null; pnSetTool('add');
   document.getElementById('pn-editor-bar').classList.add('visible');
   document.getElementById('pn-status-panel').classList.remove('visible');
   renderPathNetwork(); pnUpdateCountHint();
-  showToast('Path editor — tap to add nodes');
+  showToast('Path editor — tap the map to add nodes');
 }
 function pnExitEditor(){
   pnEditMode=false; pnStatusMode=false; pnSelNode=null;
   document.getElementById('pn-editor-bar').classList.remove('visible');
   document.getElementById('pn-status-panel').classList.remove('visible');
+  pnClearGpsLayer();
   renderPathNetwork();
   if(!document.getElementById('admin-bar').classList.contains('visible')){
     isAdminMode=false; document.getElementById('admin-badge').classList.remove('visible');
