@@ -189,6 +189,18 @@ body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:
 #tour-bar.visible{display:flex}
 .tour-btn{background:var(--green-mid);border:none;color:#fff;font-size:12px;font-weight:700;padding:7px 12px;border-radius:9px;cursor:pointer;flex-shrink:0}
 .tour-btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.7)}
+#tour-panel{position:absolute;left:50%;transform:translateX(-50%);bottom:176px;width:min(380px,92vw);background:rgba(13,31,23,.96);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 12px;z-index:611;display:none;max-height:40vh;overflow-y:auto;pointer-events:all;box-shadow:0 6px 18px rgba(0,0,0,.45)}
+#tour-panel.open{display:block}
+#tour-panel-head{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:rgba(255,255,255,.45);margin-bottom:8px}
+.tour-stop-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.07);font-size:13px;color:var(--cream)}
+.tour-stop-row:last-child{border-bottom:none}
+.tour-stop-row.cur{color:var(--amber)}
+.tour-stop-num{width:20px;height:20px;border-radius:50%;background:var(--green-mid);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tour-stop-row.cur .tour-stop-num{background:var(--amber);color:#1a1a1a}
+.tour-stop-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tour-stop-btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:var(--cream);width:26px;height:26px;border-radius:7px;cursor:pointer;font-size:12px;flex-shrink:0}
+.tour-stop-btn.del{color:#e76f51}
+.tour-stop-marker{width:26px;height:26px;border-radius:50%;border:2px solid #fff;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.5)}
 #search-nearest{display:none;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
 #search-nearest .nearest-label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:rgba(255,255,255,.45);width:100%}
 .nearest-chip{background:rgba(82,183,136,.15);border:1px solid rgba(82,183,136,.4);color:var(--cream);font-size:12px;padding:7px 11px;border-radius:18px;cursor:pointer;font-family:var(--font-body)}
@@ -1132,10 +1144,15 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
   </div>
 
   <!-- ══ TOUR BAR (multi-stop) ══ -->
+  <div id="tour-panel">
+    <div id="tour-panel-head">Tour stops</div>
+    <div id="tour-stop-list"></div>
+  </div>
   <div id="tour-bar">
-    <span id="tour-icon">🗺️</span>
+    <button id="tour-list-btn" class="tour-btn ghost" onclick="tourToggleList()" title="Stops">≡</button>
     <span id="tour-count">0 stops</span>
     <span id="tour-status" style="opacity:.7;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <button id="tour-next" class="tour-btn" onclick="tourNext()" style="display:none">Next ▶</button>
     <button id="tour-start" class="tour-btn" onclick="tourStart()">Start</button>
     <button id="tour-clear" class="tour-btn ghost" onclick="tourClear()">Clear</button>
   </div>
@@ -1593,6 +1610,7 @@ function switchView(v){
   updateRecenterBtn();
   if(typeof renderPathNetwork==='function') renderPathNetwork();
   if(typeof pnRenderRoute==='function') pnRenderRoute();
+  if(typeof tourRenderMarkers==='function') tourRenderMarkers();
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -2883,35 +2901,102 @@ function pnRouteAmenities(){
   host.style.display='';
 }
 
-// ── Arrival detection + tour auto-advance ──
+// ── Arrival detection (manual advance for tours) ──
 const ARRIVE_M=12;
 function pnCheckArrival(){
   if(!_route.active || !_route.destPct || !userLatLng) return;
   const up=pnUserPct(); if(!up) return;
   if(pnMeters(up.x,up.y,_route.destPct.x,_route.destPct.y) > ARRIVE_M) return;
-  showToast('✓ Arrived at '+(_route.destName||'destination'));
-  if(_tour.active) tourAdvance(); else clearRoute();
+  if(_tour.active){
+    if(_tour.arrivedIdx===_tour.idx) return;   // notify once per stop
+    _tour.arrivedIdx=_tour.idx;
+    showToast('✓ Arrived at '+(_route.destName||'this stop')+' — tap Next');
+  } else {
+    showToast('✓ Arrived at '+(_route.destName||'destination'));
+    clearRoute();
+  }
 }
 
 // ── Multi-stop tour ──
-let _tour={active:false, stops:[], idx:0};
+let _tour={active:false, stops:[], idx:0, totalMeters:0, arrivedIdx:-1};
+let _tourMarkers=null;
 function tourAdd(item,name){
   const pct=pnToPct(item); if(!pct){ showToast('No location for this place'); return; }
   _tour.stops.push({pct:pct, name:name||''});
-  renderTourBar(); showToast('Added to tour ('+_tour.stops.length+')');
+  tourComputeTotal(); renderTourBar(); tourRenderMarkers();
+  showToast('Added to tour ('+_tour.stops.length+')');
 }
 function tourAddCurrentEnc(){ const e=enclosures[_currentEncIdx]; if(e){ closeEncPopup(); tourAdd(e,encName(e)); } }
 function tourAddCurrentPoi(){ const p=pois[_currentPoiIdx]; if(p){ closePoiPopup(); tourAdd(p,poiName(p)); } }
-function tourClear(){ _tour={active:false,stops:[],idx:0}; clearRoute(); renderTourBar(); }
+function tourClear(){ _tour={active:false,stops:[],idx:0,totalMeters:0,arrivedIdx:-1}; clearRoute(); tourClearMarkers(); renderTourBar(); }
+function tourRemoveStop(i){
+  _tour.stops.splice(i,1);
+  if(!_tour.stops.length){ tourClear(); return; }
+  if(_tour.idx>=_tour.stops.length) _tour.idx=_tour.stops.length-1;
+  tourComputeTotal(); renderTourBar(); tourRenderMarkers();
+  if(_tour.active) tourRouteToCurrent();
+}
+function tourMoveStop(i,dir){
+  const j=i+dir; if(j<0||j>=_tour.stops.length) return;
+  const tmp=_tour.stops[i]; _tour.stops[i]=_tour.stops[j]; _tour.stops[j]=tmp;
+  tourComputeTotal(); renderTourBar(); tourRenderMarkers();
+  if(_tour.active) tourRouteToCurrent();
+}
+function tourToggleList(){
+  const p=document.getElementById('tour-panel'); if(!p) return;
+  p.classList.toggle('open');
+  if(p.classList.contains('open')) tourRenderStops();
+}
+// Total walking length of the planned chain (inter-stop legs)
+function tourComputeTotal(){
+  let total=0;
+  for(let i=0;i+1<_tour.stops.length;i++){
+    const r=pnRoute(_tour.stops[i].pct, _tour.stops[i+1].pct, _route.profile);
+    if(!r){ _tour.totalMeters=null; return null; }
+    total+=r.meters;
+  }
+  _tour.totalMeters=total; return total;
+}
+function _fmtDist(m){ if(m==null) return '—'; return m>=1000?(m/1000).toFixed(1)+' km':Math.round(m)+' m'; }
 function renderTourBar(){
   const bar=document.getElementById('tour-bar'); if(!bar) return;
-  if(!_tour.stops.length){ bar.classList.remove('visible'); return; }
+  if(!_tour.stops.length){
+    bar.classList.remove('visible');
+    const p=document.getElementById('tour-panel'); if(p) p.classList.remove('open');
+    return;
+  }
   bar.classList.add('visible');
-  document.getElementById('tour-count').textContent=_tour.stops.length+' stop'+(_tour.stops.length>1?'s':'');
+  const totalTxt=_tour.stops.length>1 ? (' · '+_fmtDist(_tour.totalMeters)) : '';
+  document.getElementById('tour-count').textContent=_tour.stops.length+' stop'+(_tour.stops.length>1?'s':'')+totalTxt;
   const st=document.getElementById('tour-status');
   const cur=_tour.stops[_tour.idx];
-  st.textContent=_tour.active ? (cur?('→ '+cur.name+'  ('+(_tour.idx+1)+'/'+_tour.stops.length+')'):'done') : '';
-  document.getElementById('tour-start').textContent=_tour.active?'Restart':'Start';
+  st.textContent=_tour.active ? (cur?('→ '+cur.name+'  ('+(_tour.idx+1)+'/'+_tour.stops.length+')'):'') : '';
+  const startBtn=document.getElementById('tour-start');
+  const nextBtn=document.getElementById('tour-next');
+  if(_tour.active){
+    if(startBtn) startBtn.style.display='none';
+    if(nextBtn){ nextBtn.style.display=''; nextBtn.textContent=(_tour.idx+1>=_tour.stops.length)?'Finish':'Next ▶'; }
+  } else {
+    if(startBtn){ startBtn.style.display=''; startBtn.textContent='Start'; }
+    if(nextBtn) nextBtn.style.display='none';
+  }
+  const panel=document.getElementById('tour-panel');
+  if(panel && panel.classList.contains('open')) tourRenderStops();
+}
+function tourRenderStops(){
+  const host=document.getElementById('tour-stop-list'); if(!host) return;
+  let h='';
+  for(let i=0;i<_tour.stops.length;i++){
+    const s=_tour.stops[i], isCur=_tour.active && i===_tour.idx;
+    h+='<div class="tour-stop-row'+(isCur?' cur':'')+'">'
+      +'<span class="tour-stop-num">'+(i+1)+'</span>'
+      +'<span class="tour-stop-name">'+(s.name||'Stop').replace(/</g,'&lt;')+'</span>'
+      +'<button class="tour-stop-btn" onclick="tourMoveStop('+i+',-1)" title="Up">↑</button>'
+      +'<button class="tour-stop-btn" onclick="tourMoveStop('+i+',1)" title="Down">↓</button>'
+      +'<button class="tour-stop-btn del" onclick="tourRemoveStop('+i+')" title="Remove">✕</button>'
+      +'</div>';
+  }
+  host.innerHTML=h;
 }
 function tourOptimize(startPct){
   function dist(a,b){ const r=pnRoute(a,b,_route.profile); return r?r.meters:Infinity; }
@@ -2928,19 +3013,36 @@ function tourStart(){
   const start=pnUserPct();
   if(!start){ if(!locationTracking && typeof startTracking==='function') startTracking(); showToast('Enable location to start the tour'); return; }
   if(pnNet().nodes.length<2){ showToast('No paths drawn yet'); return; }
-  tourOptimize(start);
-  _tour.active=true; _tour.idx=0;
-  tourRouteToCurrent(); renderTourBar();
+  tourOptimize(start); tourComputeTotal();
+  _tour.active=true; _tour.idx=0; _tour.arrivedIdx=-1;
+  tourRouteToCurrent(); renderTourBar(); tourRenderMarkers();
 }
+function tourNext(){ tourAdvance(); }
 function tourAdvance(){
   _tour.idx++;
   if(_tour.idx>=_tour.stops.length){ showToast('🎉 Tour complete!'); tourClear(); return; }
-  tourRouteToCurrent(); renderTourBar();
+  _tour.arrivedIdx=-1;
+  tourRouteToCurrent(); renderTourBar(); tourRenderMarkers();
 }
 function tourRouteToCurrent(){
   const stop=_tour.stops[_tour.idx]; if(!stop) return;
   _route.active=true; _route.destPct=stop.pct; _route.destName=stop.name;
   recomputeRoute();
+}
+// Numbered stop markers on the GPS map
+function tourClearMarkers(){ if(_tourMarkers&&lMap){ lMap.removeLayer(_tourMarkers); } _tourMarkers=null; }
+function tourRenderMarkers(){
+  tourClearMarkers();
+  if(!lMap || currentView!=='gps' || !_tour.stops.length || typeof L==='undefined') return;
+  const grp=L.layerGroup();
+  for(let i=0;i<_tour.stops.length;i++){
+    const s=_tour.stops[i], ll=imgPercentToGps(s.pct.x,s.pct.y); if(!ll) continue;
+    const cur=_tour.active && i===_tour.idx, done=_tour.active && i<_tour.idx;
+    const bg=cur?'#f4a261':(done?'#7a8a80':'#2d6a4f');
+    const icon=L.divIcon({className:'',html:'<div class="tour-stop-marker" style="background:'+bg+'">'+(i+1)+'</div>',iconSize:[26,26],iconAnchor:[13,13]});
+    grp.addLayer(L.marker(ll,{icon:icon}));
+  }
+  grp.addTo(lMap); _tourMarkers=grp;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -4806,6 +4908,18 @@ body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:
 #tour-bar.visible{display:flex}
 .tour-btn{background:var(--green-mid);border:none;color:#fff;font-size:12px;font-weight:700;padding:7px 12px;border-radius:9px;cursor:pointer;flex-shrink:0}
 .tour-btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.7)}
+#tour-panel{position:absolute;left:50%;transform:translateX(-50%);bottom:176px;width:min(380px,92vw);background:rgba(13,31,23,.96);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 12px;z-index:611;display:none;max-height:40vh;overflow-y:auto;pointer-events:all;box-shadow:0 6px 18px rgba(0,0,0,.45)}
+#tour-panel.open{display:block}
+#tour-panel-head{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:rgba(255,255,255,.45);margin-bottom:8px}
+.tour-stop-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.07);font-size:13px;color:var(--cream)}
+.tour-stop-row:last-child{border-bottom:none}
+.tour-stop-row.cur{color:var(--amber)}
+.tour-stop-num{width:20px;height:20px;border-radius:50%;background:var(--green-mid);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tour-stop-row.cur .tour-stop-num{background:var(--amber);color:#1a1a1a}
+.tour-stop-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tour-stop-btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:var(--cream);width:26px;height:26px;border-radius:7px;cursor:pointer;font-size:12px;flex-shrink:0}
+.tour-stop-btn.del{color:#e76f51}
+.tour-stop-marker{width:26px;height:26px;border-radius:50%;border:2px solid #fff;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.5)}
 #search-nearest{display:none;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
 #search-nearest .nearest-label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:rgba(255,255,255,.45);width:100%}
 .nearest-chip{background:rgba(82,183,136,.15);border:1px solid rgba(82,183,136,.4);color:var(--cream);font-size:12px;padding:7px 11px;border-radius:18px;cursor:pointer;font-family:var(--font-body)}
@@ -5010,10 +5124,15 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
     <button class="route-clear" onclick="clearRoute()" title="Clear route">×</button>
   </div>
 
+  <div id="tour-panel">
+    <div id="tour-panel-head">Tour stops</div>
+    <div id="tour-stop-list"></div>
+  </div>
   <div id="tour-bar">
-    <span id="tour-icon">🗺️</span>
+    <button id="tour-list-btn" class="tour-btn ghost" onclick="tourToggleList()" title="Stops">≡</button>
     <span id="tour-count">0 stops</span>
     <span id="tour-status" style="opacity:.7;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <button id="tour-next" class="tour-btn" onclick="tourNext()" style="display:none">Next ▶</button>
     <button id="tour-start" class="tour-btn" onclick="tourStart()">Start</button>
     <button id="tour-clear" class="tour-btn ghost" onclick="tourClear()">Clear</button>
   </div>
@@ -5824,35 +5943,102 @@ function pnRouteAmenities(){
   host.style.display='';
 }
 
-// ── Arrival detection + tour auto-advance ──
+// ── Arrival detection (manual advance for tours) ──
 const ARRIVE_M=12;
 function pnCheckArrival(){
   if(!_route.active || !_route.destPct || !userLatLng) return;
   const up=pnUserPct(); if(!up) return;
   if(pnMeters(up.x,up.y,_route.destPct.x,_route.destPct.y) > ARRIVE_M) return;
-  showToast('✓ Arrived at '+(_route.destName||'destination'));
-  if(_tour.active) tourAdvance(); else clearRoute();
+  if(_tour.active){
+    if(_tour.arrivedIdx===_tour.idx) return;   // notify once per stop
+    _tour.arrivedIdx=_tour.idx;
+    showToast('✓ Arrived at '+(_route.destName||'this stop')+' — tap Next');
+  } else {
+    showToast('✓ Arrived at '+(_route.destName||'destination'));
+    clearRoute();
+  }
 }
 
 // ── Multi-stop tour ──
-let _tour={active:false, stops:[], idx:0};
+let _tour={active:false, stops:[], idx:0, totalMeters:0, arrivedIdx:-1};
+let _tourMarkers=null;
 function tourAdd(item,name){
   const pct=pnToPct(item); if(!pct){ showToast('No location for this place'); return; }
   _tour.stops.push({pct:pct, name:name||''});
-  renderTourBar(); showToast('Added to tour ('+_tour.stops.length+')');
+  tourComputeTotal(); renderTourBar(); tourRenderMarkers();
+  showToast('Added to tour ('+_tour.stops.length+')');
 }
 function tourAddCurrentEnc(){ const e=enclosures[_currentEncIdx]; if(e){ closeEncPopup(); tourAdd(e,encName(e)); } }
 function tourAddCurrentPoi(){ const p=pois[_currentPoiIdx]; if(p){ closePoiPopup(); tourAdd(p,poiName(p)); } }
-function tourClear(){ _tour={active:false,stops:[],idx:0}; clearRoute(); renderTourBar(); }
+function tourClear(){ _tour={active:false,stops:[],idx:0,totalMeters:0,arrivedIdx:-1}; clearRoute(); tourClearMarkers(); renderTourBar(); }
+function tourRemoveStop(i){
+  _tour.stops.splice(i,1);
+  if(!_tour.stops.length){ tourClear(); return; }
+  if(_tour.idx>=_tour.stops.length) _tour.idx=_tour.stops.length-1;
+  tourComputeTotal(); renderTourBar(); tourRenderMarkers();
+  if(_tour.active) tourRouteToCurrent();
+}
+function tourMoveStop(i,dir){
+  const j=i+dir; if(j<0||j>=_tour.stops.length) return;
+  const tmp=_tour.stops[i]; _tour.stops[i]=_tour.stops[j]; _tour.stops[j]=tmp;
+  tourComputeTotal(); renderTourBar(); tourRenderMarkers();
+  if(_tour.active) tourRouteToCurrent();
+}
+function tourToggleList(){
+  const p=document.getElementById('tour-panel'); if(!p) return;
+  p.classList.toggle('open');
+  if(p.classList.contains('open')) tourRenderStops();
+}
+// Total walking length of the planned chain (inter-stop legs)
+function tourComputeTotal(){
+  let total=0;
+  for(let i=0;i+1<_tour.stops.length;i++){
+    const r=pnRoute(_tour.stops[i].pct, _tour.stops[i+1].pct, _route.profile);
+    if(!r){ _tour.totalMeters=null; return null; }
+    total+=r.meters;
+  }
+  _tour.totalMeters=total; return total;
+}
+function _fmtDist(m){ if(m==null) return '—'; return m>=1000?(m/1000).toFixed(1)+' km':Math.round(m)+' m'; }
 function renderTourBar(){
   const bar=document.getElementById('tour-bar'); if(!bar) return;
-  if(!_tour.stops.length){ bar.classList.remove('visible'); return; }
+  if(!_tour.stops.length){
+    bar.classList.remove('visible');
+    const p=document.getElementById('tour-panel'); if(p) p.classList.remove('open');
+    return;
+  }
   bar.classList.add('visible');
-  document.getElementById('tour-count').textContent=_tour.stops.length+' stop'+(_tour.stops.length>1?'s':'');
+  const totalTxt=_tour.stops.length>1 ? (' · '+_fmtDist(_tour.totalMeters)) : '';
+  document.getElementById('tour-count').textContent=_tour.stops.length+' stop'+(_tour.stops.length>1?'s':'')+totalTxt;
   const st=document.getElementById('tour-status');
   const cur=_tour.stops[_tour.idx];
-  st.textContent=_tour.active ? (cur?('→ '+cur.name+'  ('+(_tour.idx+1)+'/'+_tour.stops.length+')'):'done') : '';
-  document.getElementById('tour-start').textContent=_tour.active?'Restart':'Start';
+  st.textContent=_tour.active ? (cur?('→ '+cur.name+'  ('+(_tour.idx+1)+'/'+_tour.stops.length+')'):'') : '';
+  const startBtn=document.getElementById('tour-start');
+  const nextBtn=document.getElementById('tour-next');
+  if(_tour.active){
+    if(startBtn) startBtn.style.display='none';
+    if(nextBtn){ nextBtn.style.display=''; nextBtn.textContent=(_tour.idx+1>=_tour.stops.length)?'Finish':'Next ▶'; }
+  } else {
+    if(startBtn){ startBtn.style.display=''; startBtn.textContent='Start'; }
+    if(nextBtn) nextBtn.style.display='none';
+  }
+  const panel=document.getElementById('tour-panel');
+  if(panel && panel.classList.contains('open')) tourRenderStops();
+}
+function tourRenderStops(){
+  const host=document.getElementById('tour-stop-list'); if(!host) return;
+  let h='';
+  for(let i=0;i<_tour.stops.length;i++){
+    const s=_tour.stops[i], isCur=_tour.active && i===_tour.idx;
+    h+='<div class="tour-stop-row'+(isCur?' cur':'')+'">'
+      +'<span class="tour-stop-num">'+(i+1)+'</span>'
+      +'<span class="tour-stop-name">'+(s.name||'Stop').replace(/</g,'&lt;')+'</span>'
+      +'<button class="tour-stop-btn" onclick="tourMoveStop('+i+',-1)" title="Up">↑</button>'
+      +'<button class="tour-stop-btn" onclick="tourMoveStop('+i+',1)" title="Down">↓</button>'
+      +'<button class="tour-stop-btn del" onclick="tourRemoveStop('+i+')" title="Remove">✕</button>'
+      +'</div>';
+  }
+  host.innerHTML=h;
 }
 function tourOptimize(startPct){
   function dist(a,b){ const r=pnRoute(a,b,_route.profile); return r?r.meters:Infinity; }
@@ -5869,19 +6055,36 @@ function tourStart(){
   const start=pnUserPct();
   if(!start){ if(!locationTracking && typeof startTracking==='function') startTracking(); showToast('Enable location to start the tour'); return; }
   if(pnNet().nodes.length<2){ showToast('No paths drawn yet'); return; }
-  tourOptimize(start);
-  _tour.active=true; _tour.idx=0;
-  tourRouteToCurrent(); renderTourBar();
+  tourOptimize(start); tourComputeTotal();
+  _tour.active=true; _tour.idx=0; _tour.arrivedIdx=-1;
+  tourRouteToCurrent(); renderTourBar(); tourRenderMarkers();
 }
+function tourNext(){ tourAdvance(); }
 function tourAdvance(){
   _tour.idx++;
   if(_tour.idx>=_tour.stops.length){ showToast('🎉 Tour complete!'); tourClear(); return; }
-  tourRouteToCurrent(); renderTourBar();
+  _tour.arrivedIdx=-1;
+  tourRouteToCurrent(); renderTourBar(); tourRenderMarkers();
 }
 function tourRouteToCurrent(){
   const stop=_tour.stops[_tour.idx]; if(!stop) return;
   _route.active=true; _route.destPct=stop.pct; _route.destName=stop.name;
   recomputeRoute();
+}
+// Numbered stop markers on the GPS map
+function tourClearMarkers(){ if(_tourMarkers&&lMap){ lMap.removeLayer(_tourMarkers); } _tourMarkers=null; }
+function tourRenderMarkers(){
+  tourClearMarkers();
+  if(!lMap || currentView!=='gps' || !_tour.stops.length || typeof L==='undefined') return;
+  const grp=L.layerGroup();
+  for(let i=0;i<_tour.stops.length;i++){
+    const s=_tour.stops[i], ll=imgPercentToGps(s.pct.x,s.pct.y); if(!ll) continue;
+    const cur=_tour.active && i===_tour.idx, done=_tour.active && i<_tour.idx;
+    const bg=cur?'#f4a261':(done?'#7a8a80':'#2d6a4f');
+    const icon=L.divIcon({className:'',html:'<div class="tour-stop-marker" style="background:'+bg+'">'+(i+1)+'</div>',iconSize:[26,26],iconAnchor:[13,13]});
+    grp.addLayer(L.marker(ll,{icon:icon}));
+  }
+  grp.addTo(lMap); _tourMarkers=grp;
 }
 
 // ── Init ──
@@ -6224,6 +6427,7 @@ function switchView(v){
   updateUserDot();
   updateRecenterBtn();
   if(typeof pnRenderRoute==='function') pnRenderRoute();
+  if(typeof tourRenderMarkers==='function') tourRenderMarkers();
 }
 
 // ── Image pan/zoom ──
