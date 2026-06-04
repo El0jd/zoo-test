@@ -1768,6 +1768,13 @@ function initLeaflet(){
   setupOverlayGestures();
 }
 
+// Rebuild the Leaflet tile layer from cfg.mapTile / cfg.mapyApiKey.
+// Safe to call any time (no-op until the map exists).
+function applyMapTile(){
+  if(!lMap) return;
+  if(lTile) lMap.removeLayer(lTile);
+  lTile=makeTileLayer().addTo(lMap);
+}
 function changeMapTile(){
   const s=document.getElementById('map-tile-select').value;
   cfg.mapTile=s;
@@ -1775,14 +1782,13 @@ function changeMapTile(){
   if(def && def.needsKey && !cfg.mapyApiKey){
     showToast('⚠️ Mapy.cz needs API key — falling back to OpenStreetMap');
   }
-  if(lMap&&lTile) lMap.removeLayer(lTile);
-  if(lMap) lTile=makeTileLayer().addTo(lMap);
+  applyMapTile();
   saveAll();
 }
 function changeMapyApiKey(){
   const v=document.getElementById('cfg-mapy-key').value.trim();
   cfg.mapyApiKey=v;
-  if(lMap&&lTile){ lMap.removeLayer(lTile); lTile=makeTileLayer().addTo(lMap); }
+  applyMapTile();
   saveAll();
 }
 
@@ -3559,7 +3565,7 @@ function importSetupJson(e){
       if(typeof incoming !== 'object') throw new Error('Invalid setup file');
       cfg = {...cfg, ...incoming};
       if(!cfg.theme) cfg.theme = {...DEFAULT_THEME};
-      saveAll(); applyConfig(); populateSetupForms(); buildThemeRows();
+      saveAll(); applyConfig(); applyMapTile(); populateSetupForms(); buildThemeRows();
       renderEncList(); renderCatList(); renderPoiList(); renderPins(); renderPoiPins(); renderFilterPanel();
       showToast('Setup imported ✓');
     } catch(err){ showToast('Import failed: '+err.message); }
@@ -3591,7 +3597,7 @@ function importFullBundle(e){
       if(Array.isArray(data.enclosures)) enclosures = data.enclosures;
       if(Array.isArray(data.categories)) categories = data.categories;
       if(Array.isArray(data.pois))       pois       = data.pois;
-      saveAll(); applyConfig(); populateSetupForms(); buildThemeRows();
+      saveAll(); applyConfig(); applyMapTile(); populateSetupForms(); buildThemeRows();
       renderEncList(); renderCatList(); renderPoiList(); renderPins(); renderPoiPins(); renderFilterPanel();
       showToast('Bundle imported ✓');
     } catch(err){ showToast('Import failed: '+err.message); }
