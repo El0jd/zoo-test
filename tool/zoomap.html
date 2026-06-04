@@ -2666,14 +2666,17 @@ function _projSeg(p,a,b){
   const qx=a[0]+t*dx, qy=a[1]+t*dy;
   return {proj:[qx,qy], d:Math.hypot(p[0]-qx,p[1]-qy), t:t};
 }
-// Destination/user → image-% point
+// Destination/user → path-network coordinate frame.
+// The network is anchored to overlayGpsCenter (nodes drawn on the GPS map), so we
+// MUST resolve to the same frame: prefer real GPS via the unclamped converter.
+// Only fall back to the image pin when an item has no GPS (legacy image-only data).
 function pnToPct(item){
   if(!item) return null;
+  if(item.gps && item.gps[0]!=null){ const p=pnGpsToPctRaw(item.gps[0],item.gps[1]); if(p) return p; }
   if(item.pinX!=null && item.pinY!=null) return {x:item.pinX, y:item.pinY};
-  if(item.gps && item.gps[0]!=null){ const p=gpsToImgPercent(item.gps[0],item.gps[1]); if(p) return p; }
   return null;
 }
-function pnUserPct(){ if(!userLatLng) return null; return gpsToImgPercent(userLatLng[0],userLatLng[1]); }
+function pnUserPct(){ if(!userLatLng) return null; return pnGpsToPctRaw(userLatLng[0],userLatLng[1]); }
 
 function pnEdgePassable(e,profile){
   if(e.closed) return false;
@@ -5604,14 +5607,17 @@ function _projSeg(p,a,b){
   const qx=a[0]+t*dx, qy=a[1]+t*dy;
   return {proj:[qx,qy], d:Math.hypot(p[0]-qx,p[1]-qy), t:t};
 }
-// Destination/user → image-% point
+// Destination/user → path-network coordinate frame.
+// The network is anchored to overlayGpsCenter (nodes drawn on the GPS map), so we
+// MUST resolve to the same frame: prefer real GPS via the unclamped converter.
+// Only fall back to the image pin when an item has no GPS (legacy image-only data).
 function pnToPct(item){
   if(!item) return null;
+  if(item.gps && item.gps[0]!=null){ const p=pnGpsToPctRaw(item.gps[0],item.gps[1]); if(p) return p; }
   if(item.pinX!=null && item.pinY!=null) return {x:item.pinX, y:item.pinY};
-  if(item.gps && item.gps[0]!=null){ const p=gpsToImgPercent(item.gps[0],item.gps[1]); if(p) return p; }
   return null;
 }
-function pnUserPct(){ if(!userLatLng) return null; return gpsToImgPercent(userLatLng[0],userLatLng[1]); }
+function pnUserPct(){ if(!userLatLng) return null; return pnGpsToPctRaw(userLatLng[0],userLatLng[1]); }
 
 function pnEdgePassable(e,profile){
   if(e.closed) return false;
