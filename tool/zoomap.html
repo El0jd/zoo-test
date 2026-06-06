@@ -1287,7 +1287,11 @@ const UI_STRINGS={
       mapBtn:'Map',gpsBtn:'GPS',
       enableLocation:'Enable Location',enableLocationDesc:'Allow location access to see your position on the map and navigate the zoo easily.',enableGpsBtn:'Enable GPS',maybeLater:'Maybe later',
       gpsNotAvailable:'GPS not available on this device',gpsDenied:'Location permission denied',gpsError:'GPS error',
-      noMapImage:'No map image configured.'},
+      noMapImage:'No map image configured.',
+      searchPlaceholder:'Search…',nearest:'Nearest',noResults:'No matches',
+      gpsAcquiring:'Acquiring GPS — route will appear once located',locationNeeded:'Enable location first',
+      noRoute:'No route found',noLocation:'No location for this place',noReachable:'No reachable place found',
+      arrived:'Arrived at',tapNext:'tap Next',addedToTour:'Added to tour',tourComplete:'Tour complete!'},
   cs:{weight:'Hmotnost',size:'Velikost',lifespan:'Délka života',habitat:'Prostředí',food:'Potrava',location:'Umístění',
       residents:'Obyvatelé',adoptMe:'Adoptujte mě',adopt:'Adoptovat',age:'Věk',directions:'Navigovat',
       endangerEX:'Vyhynulý',endangerCR:'Kriticky ohrožený',endangerEN:'Ohrožený',endangerVU:'Zranitelný',endangerNT:'Téměř ohrožený',endangerLC:'Málo dotčený',
@@ -1295,7 +1299,11 @@ const UI_STRINGS={
       mapBtn:'Mapa',gpsBtn:'GPS',
       enableLocation:'Povolit polohu',enableLocationDesc:'Povolte přístup k poloze, abyste viděli svou pozici na mapě a snadno se orientovali v zoo.',enableGpsBtn:'Povolit GPS',maybeLater:'Možná později',
       gpsNotAvailable:'GPS není na tomto zařízení k dispozici',gpsDenied:'Přístup k poloze byl odepřen',gpsError:'Chyba GPS',
-      noMapImage:'Mapa není nastavena.'},
+      noMapImage:'Mapa není nastavena.',
+      searchPlaceholder:'Hledat…',nearest:'Nejbližší',noResults:'Žádné výsledky',
+      gpsAcquiring:'Zaměřuji GPS — trasa se zobrazí po nalezení polohy',locationNeeded:'Nejprve povolte polohu',
+      noRoute:'Trasa nenalezena',noLocation:'Pro toto místo není poloha',noReachable:'Žádné dostupné místo',
+      arrived:'Jste u cíle:',tapNext:'klepněte na Další',addedToTour:'Přidáno do prohlídky',tourComplete:'Prohlídka dokončena!'},
   fr:{weight:'Poids',size:'Taille',lifespan:'Espérance de vie',habitat:'Habitat',food:'Alimentation',location:'Localisation',
       residents:'Résidents',adoptMe:'Adoptez-moi',adopt:'Adopter',age:'Âge',directions:'Itinéraire',
       endangerEX:'Éteint',endangerCR:'En danger critique',endangerEN:'En danger',endangerVU:'Vulnérable',endangerNT:'Quasi menacé',endangerLC:'Préoccupation mineure',
@@ -1303,7 +1311,11 @@ const UI_STRINGS={
       mapBtn:'Carte',gpsBtn:'GPS',
       enableLocation:'Activer la localisation',enableLocationDesc:'Autorisez l\u2019accès à votre position pour vous voir sur la carte et naviguer facilement dans le zoo.',enableGpsBtn:'Activer le GPS',maybeLater:'Plus tard',
       gpsNotAvailable:'GPS non disponible sur cet appareil',gpsDenied:'Accès à la localisation refusé',gpsError:'Erreur GPS',
-      noMapImage:'Aucune carte configurée.'},
+      noMapImage:'Aucune carte configurée.',
+      searchPlaceholder:'Rechercher…',nearest:'À proximité',noResults:'Aucun résultat',
+      gpsAcquiring:'Acquisition GPS — l’itinéraire s’affichera une fois localisé',locationNeeded:'Activez d’abord la localisation',
+      noRoute:'Aucun itinéraire trouvé',noLocation:'Aucune position pour ce lieu',noReachable:'Aucun lieu accessible',
+      arrived:'Arrivé à',tapNext:'appuyez sur Suivant',addedToTour:'Ajouté au parcours',tourComplete:'Visite terminée !'},
   de:{weight:'Gewicht',size:'Größe',lifespan:'Lebensdauer',habitat:'Lebensraum',food:'Nahrung',location:'Standort',
       residents:'Bewohner',adoptMe:'Adoptiere mich',adopt:'Adoptieren',age:'Alter',directions:'Route',
       endangerEX:'Ausgestorben',endangerCR:'Vom Aussterben bedroht',endangerEN:'Stark gefährdet',endangerVU:'Gefährdet',endangerNT:'Potenziell gefährdet',endangerLC:'Nicht gefährdet',
@@ -2222,7 +2234,7 @@ function normStr(s){
 function openSearchPanel(){
   document.getElementById('search-panel').classList.add('open');
   const input=document.getElementById('search-input');
-  input.value=''; input.focus();
+  input.value=''; input.focus(); input.placeholder=t('searchPlaceholder');
   renderNearestChips();
   runSearch();
 }
@@ -2273,7 +2285,7 @@ function runSearch(){
     results=all.filter(r=>terms.every(t=>r.hay.includes(t))).slice(0,30);
   }
   if(!results.length){
-    out.innerHTML='<div class="search-empty">No matches</div>';
+    out.innerHTML='<div class="search-empty">'+t('noResults')+'</div>';
     return;
   }
   results.forEach(r=>{
@@ -2836,18 +2848,18 @@ function recomputeRoute(){
   const start=pnUserPct();
   if(!start){ return; }                         // wait for GPS fix
   const res=pnRoute(start,_route.destPct,_route.profile);
-  if(!res){ showToast('No accessible route to here'); pnClearRouteGfx(); return; }
+  if(!res){ showToast(t('noRoute')); pnClearRouteGfx(); return; }
   _route.pts=res.pts; _route.meters=res.meters; _route.lastCalcT=Date.now();
   pnRenderRoute();
   if(currentView==='gps' && _routeGpsLine){ try{ lMap.fitBounds(_routeGpsLine.getBounds(),{padding:[50,50],maxZoom:19}); }catch(_){} }
 }
 function walkToItem(item, name){
   const destPct=pnToPct(item);
-  if(!destPct){ showToast('No location set for this place'); return; }
+  if(!destPct){ showToast(t('noLocation')); return; }
   _route.active=true; _route.destPct=destPct; _route.destName=name||'';
   if(!userLatLng){
     if(typeof startTracking==='function' && !locationTracking) startTracking();
-    showToast('📡 Acquiring GPS — route appears once located');
+    showToast('📡 '+t('gpsAcquiring'));
     return;   // first fix triggers recompute via maybeRecalcRoute()
   }
   recomputeRoute();
@@ -2880,13 +2892,13 @@ function renderNearestChips(){
   if(pnNet().nodes.length<2){ host.style.display='none'; host.innerHTML=''; return; }
   const cats=categories.filter(function(c){ return pois.some(function(p){ return p.categoryId===c.id && pnToPct(p); }); });
   if(!cats.length){ host.style.display='none'; host.innerHTML=''; return; }
-  let h='<div class="nearest-label">Nearest</div>';
+  let h='<div class="nearest-label">'+t('nearest')+'</div>';
   cats.forEach(function(c){ h+='<button class="nearest-chip" onclick="findNearest(\''+c.id+'\')">'+(c.emoji||'📍')+' '+catName(c).replace(/</g,'&lt;')+'</button>'; });
   host.innerHTML=h; host.style.display='flex';
 }
 function findNearest(categoryId){
   const start=pnUserPct();
-  if(!start){ if(!locationTracking && typeof startTracking==='function') startTracking(); showToast('Enable location to find the nearest'); return; }
+  if(!start){ if(!locationTracking && typeof startTracking==='function') startTracking(); showToast(t('locationNeeded')); return; }
   let best=null, bestM=Infinity, bestPoi=null;
   pois.forEach(function(p){
     if(p.categoryId!==categoryId) return;
@@ -2894,7 +2906,7 @@ function findNearest(categoryId){
     const r=pnRoute(start,dp,_route.profile);
     if(r && r.meters<bestM){ bestM=r.meters; best=r; bestPoi=p; }
   });
-  if(!best){ showToast('No reachable place found'); return; }
+  if(!best){ showToast(t('noReachable')); return; }
   closeSearchPanel();
   _route.active=true; _route.destPct=pnToPct(bestPoi); _route.destName=poiName(bestPoi);
   _route.pts=best.pts; _route.meters=best.meters; _route.lastCalcT=Date.now();
@@ -2930,9 +2942,9 @@ function pnCheckArrival(){
   if(_tour.active){
     if(_tour.arrivedIdx===_tour.idx) return;   // notify once per stop
     _tour.arrivedIdx=_tour.idx;
-    showToast('✓ Arrived at '+(_route.destName||'this stop')+' — tap Next');
+    showToast('✓ '+t('arrived')+' '+(_route.destName||'')+' — '+t('tapNext'));
   } else {
-    showToast('✓ Arrived at '+(_route.destName||'destination'));
+    showToast('✓ '+t('arrived')+' '+(_route.destName||''));
     clearRoute();
   }
 }
@@ -2941,10 +2953,10 @@ function pnCheckArrival(){
 let _tour={active:false, stops:[], idx:0, totalMeters:0, arrivedIdx:-1};
 let _tourMarkers=null;
 function tourAdd(item,name){
-  const pct=pnToPct(item); if(!pct){ showToast('No location for this place'); return; }
+  const pct=pnToPct(item); if(!pct){ showToast(t('noLocation')); return; }
   _tour.stops.push({pct:pct, name:name||''});
   tourComputeTotal(); renderTourBar(); tourRenderMarkers();
-  showToast('Added to tour ('+_tour.stops.length+')');
+  showToast(t('addedToTour')+' ('+_tour.stops.length+')');
 }
 function tourAddCurrentEnc(){ const e=enclosures[_currentEncIdx]; if(e){ closeEncPopup(); tourAdd(e,encName(e)); } }
 function tourAddCurrentPoi(){ const p=pois[_currentPoiIdx]; if(p){ closePoiPopup(); tourAdd(p,poiName(p)); } }
@@ -3031,7 +3043,7 @@ function tourOptimize(startPct){
 function tourStart(){
   if(!_tour.stops.length) return;
   const start=pnUserPct();
-  if(!start){ if(!locationTracking && typeof startTracking==='function') startTracking(); showToast('Enable location to start the tour'); return; }
+  if(!start){ if(!locationTracking && typeof startTracking==='function') startTracking(); showToast(t('locationNeeded')); return; }
   if(pnNet().nodes.length<2){ showToast('No paths drawn yet'); return; }
   tourOptimize(start); tourComputeTotal();
   _tour.active=true; _tour.idx=0; _tour.arrivedIdx=-1;
@@ -3040,7 +3052,7 @@ function tourStart(){
 function tourNext(){ tourAdvance(); }
 function tourAdvance(){
   _tour.idx++;
-  if(_tour.idx>=_tour.stops.length){ showToast('🎉 Tour complete!'); tourClear(); return; }
+  if(_tour.idx>=_tour.stops.length){ showToast('🎉 '+t('tourComplete')); tourClear(); return; }
   _tour.arrivedIdx=-1;
   tourRouteToCurrent(); renderTourBar(); tourRenderMarkers();
 }
@@ -3083,7 +3095,7 @@ function setText(id,val){ const el=document.getElementById(id); if(el) el.textCo
 function openEncPopup(idx){
   const enc=enclosures[idx]; if(!enc) return;
   _currentEncIdx = idx;
-  const eb=document.getElementById('enc-edit-btn'); if(eb) eb.style.display=isAdminMode?'flex':'none';
+  const eb=document.getElementById('enc-edit-btn'); if(eb) eb.style.display='flex';   // tool is always admin; button is absent from the export
   const _routable = !!pnToPct(enc) && pnNet().nodes.length>1;
   const wb=document.getElementById('enc-walk-btn');
   if(wb){ wb.textContent='🧭 '+t('directions'); wb.classList.toggle('visible', _routable); }
@@ -3768,9 +3780,10 @@ function saveLanguageConfig(){
 // Friendly labels for each translation key, grouped logically
 const UI_STRING_GROUPS=[
   {label:'Stat labels (in animal popup)', keys:['weight','size','lifespan','habitat','food','location','age']},
-  {label:'Sections & buttons',            keys:['residents','adoptMe','adopt','enclosures','layers','mapBtn','gpsBtn']},
+  {label:'Sections & buttons',            keys:['residents','adoptMe','adopt','enclosures','layers','mapBtn','gpsBtn','directions']},
   {label:'IUCN endanger statuses',        keys:['endangerEX','endangerCR','endangerEN','endangerVU','endangerNT','endangerLC']},
-  {label:'GPS prompt & errors',           keys:['enableLocation','enableLocationDesc','enableGpsBtn','maybeLater','gpsNotAvailable','gpsDenied','gpsError','noMapImage']}
+  {label:'GPS prompt & errors',           keys:['enableLocation','enableLocationDesc','enableGpsBtn','maybeLater','gpsNotAvailable','gpsDenied','gpsError','noMapImage']},
+  {label:'Search & navigation',           keys:['searchPlaceholder','nearest','noResults','gpsAcquiring','locationNeeded','noRoute','noLocation','noReachable','arrived','tapNext','addedToTour','tourComplete']}
 ];
 
 function buildUiStringsPanel(){
@@ -4636,7 +4649,7 @@ function renderPoiMapMarkers(){
 function openPoiPopup(idx){
   const poi=pois[idx]; if(!poi) return;
   _currentPoiIdx = idx;
-  const eb=document.getElementById('poi-edit-btn'); if(eb) eb.style.display=isAdminMode?'flex':'none';
+  const eb=document.getElementById('poi-edit-btn'); if(eb) eb.style.display='flex';   // tool is always admin; button is absent from the export
   const _routableP = !!pnToPct(poi) && pnNet().nodes.length>1;
   const wb=document.getElementById('poi-walk-btn');
   if(wb){ wb.textContent='🧭 '+t('directions'); wb.classList.toggle('visible', _routableP); }
@@ -5284,7 +5297,7 @@ function normStr(s){
 function openSearchPanel(){
   document.getElementById('search-panel').classList.add('open');
   const input=document.getElementById('search-input');
-  input.value=''; input.focus();
+  input.value=''; input.focus(); input.placeholder=t('searchPlaceholder');
   if(typeof renderNearestChips==='function') renderNearestChips();
   runSearch();
 }
@@ -5336,7 +5349,7 @@ function runSearch(){
     results=all.filter(function(r){return terms.every(function(t){return r.hay.indexOf(t)>=0;});}).slice(0,30);
   }
   if(!results.length){
-    out.innerHTML='<div class="search-empty">No matches</div>';
+    out.innerHTML='<div class="search-empty">'+t('noResults')+'</div>';
     return;
   }
   results.forEach(function(r){
@@ -5899,18 +5912,18 @@ function recomputeRoute(){
   const start=pnUserPct();
   if(!start){ return; }                         // wait for GPS fix
   const res=pnRoute(start,_route.destPct,_route.profile);
-  if(!res){ showToast('No accessible route to here'); pnClearRouteGfx(); return; }
+  if(!res){ showToast(t('noRoute')); pnClearRouteGfx(); return; }
   _route.pts=res.pts; _route.meters=res.meters; _route.lastCalcT=Date.now();
   pnRenderRoute();
   if(currentView==='gps' && _routeGpsLine){ try{ lMap.fitBounds(_routeGpsLine.getBounds(),{padding:[50,50],maxZoom:19}); }catch(_){} }
 }
 function walkToItem(item, name){
   const destPct=pnToPct(item);
-  if(!destPct){ showToast('No location set for this place'); return; }
+  if(!destPct){ showToast(t('noLocation')); return; }
   _route.active=true; _route.destPct=destPct; _route.destName=name||'';
   if(!userLatLng){
     if(typeof startTracking==='function' && !locationTracking) startTracking();
-    showToast('📡 Acquiring GPS — route appears once located');
+    showToast('📡 '+t('gpsAcquiring'));
     return;   // first fix triggers recompute via maybeRecalcRoute()
   }
   recomputeRoute();
@@ -5943,13 +5956,13 @@ function renderNearestChips(){
   if(pnNet().nodes.length<2){ host.style.display='none'; host.innerHTML=''; return; }
   const cats=categories.filter(function(c){ return pois.some(function(p){ return p.categoryId===c.id && pnToPct(p); }); });
   if(!cats.length){ host.style.display='none'; host.innerHTML=''; return; }
-  let h='<div class="nearest-label">Nearest</div>';
+  let h='<div class="nearest-label">'+t('nearest')+'</div>';
   cats.forEach(function(c){ h+='<button class="nearest-chip" onclick="findNearest(\\''+c.id+'\\')">'+(c.emoji||'📍')+' '+catName(c).replace(/</g,'&lt;')+'</button>'; });
   host.innerHTML=h; host.style.display='flex';
 }
 function findNearest(categoryId){
   const start=pnUserPct();
-  if(!start){ if(!locationTracking && typeof startTracking==='function') startTracking(); showToast('Enable location to find the nearest'); return; }
+  if(!start){ if(!locationTracking && typeof startTracking==='function') startTracking(); showToast(t('locationNeeded')); return; }
   let best=null, bestM=Infinity, bestPoi=null;
   pois.forEach(function(p){
     if(p.categoryId!==categoryId) return;
@@ -5957,7 +5970,7 @@ function findNearest(categoryId){
     const r=pnRoute(start,dp,_route.profile);
     if(r && r.meters<bestM){ bestM=r.meters; best=r; bestPoi=p; }
   });
-  if(!best){ showToast('No reachable place found'); return; }
+  if(!best){ showToast(t('noReachable')); return; }
   closeSearchPanel();
   _route.active=true; _route.destPct=pnToPct(bestPoi); _route.destName=poiName(bestPoi);
   _route.pts=best.pts; _route.meters=best.meters; _route.lastCalcT=Date.now();
@@ -5993,9 +6006,9 @@ function pnCheckArrival(){
   if(_tour.active){
     if(_tour.arrivedIdx===_tour.idx) return;   // notify once per stop
     _tour.arrivedIdx=_tour.idx;
-    showToast('✓ Arrived at '+(_route.destName||'this stop')+' — tap Next');
+    showToast('✓ '+t('arrived')+' '+(_route.destName||'')+' — '+t('tapNext'));
   } else {
-    showToast('✓ Arrived at '+(_route.destName||'destination'));
+    showToast('✓ '+t('arrived')+' '+(_route.destName||''));
     clearRoute();
   }
 }
@@ -6004,10 +6017,10 @@ function pnCheckArrival(){
 let _tour={active:false, stops:[], idx:0, totalMeters:0, arrivedIdx:-1};
 let _tourMarkers=null;
 function tourAdd(item,name){
-  const pct=pnToPct(item); if(!pct){ showToast('No location for this place'); return; }
+  const pct=pnToPct(item); if(!pct){ showToast(t('noLocation')); return; }
   _tour.stops.push({pct:pct, name:name||''});
   tourComputeTotal(); renderTourBar(); tourRenderMarkers();
-  showToast('Added to tour ('+_tour.stops.length+')');
+  showToast(t('addedToTour')+' ('+_tour.stops.length+')');
 }
 function tourAddCurrentEnc(){ const e=enclosures[_currentEncIdx]; if(e){ closeEncPopup(); tourAdd(e,encName(e)); } }
 function tourAddCurrentPoi(){ const p=pois[_currentPoiIdx]; if(p){ closePoiPopup(); tourAdd(p,poiName(p)); } }
@@ -6094,7 +6107,7 @@ function tourOptimize(startPct){
 function tourStart(){
   if(!_tour.stops.length) return;
   const start=pnUserPct();
-  if(!start){ if(!locationTracking && typeof startTracking==='function') startTracking(); showToast('Enable location to start the tour'); return; }
+  if(!start){ if(!locationTracking && typeof startTracking==='function') startTracking(); showToast(t('locationNeeded')); return; }
   if(pnNet().nodes.length<2){ showToast('No paths drawn yet'); return; }
   tourOptimize(start); tourComputeTotal();
   _tour.active=true; _tour.idx=0; _tour.arrivedIdx=-1;
@@ -6103,7 +6116,7 @@ function tourStart(){
 function tourNext(){ tourAdvance(); }
 function tourAdvance(){
   _tour.idx++;
-  if(_tour.idx>=_tour.stops.length){ showToast('🎉 Tour complete!'); tourClear(); return; }
+  if(_tour.idx>=_tour.stops.length){ showToast('🎉 '+t('tourComplete')); tourClear(); return; }
   _tour.arrivedIdx=-1;
   tourRouteToCurrent(); renderTourBar(); tourRenderMarkers();
 }
