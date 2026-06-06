@@ -58,6 +58,12 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--font-body);ba
 .pin-label{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,0.65);border-radius:4px;padding:1px 5px;white-space:nowrap;pointer-events:none}
 .map-pin.hidden-pin{opacity:0;pointer-events:none}
 .leaflet-pin-wrapper{position:relative;cursor:pointer}
+.gps-pin-dot{position:absolute;left:50%;bottom:0;transform:translate(-50%,50%);width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.55);display:none;pointer-events:none}
+/* Declutter when zoomed out: hide labels, then collapse pins to dots */
+#leaflet-map.labels-min .gps-pin-label{display:none}
+#leaflet-map.pins-min .leaflet-pin-wrapper>svg{display:none}
+#leaflet-map.pins-min .gps-pin-label{display:none}
+#leaflet-map.pins-min .gps-pin-dot{display:block}
 /* ── Path network (nodes + edges drawn on the image map) ── */
 #path-net-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:110}
 #route-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:118}
@@ -136,6 +142,8 @@ body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:
 @keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}
 #enc-handle{width:40px;height:4px;background:rgba(255,255,255,0.25);border-radius:2px;margin:12px auto 0}
 #enc-close{position:absolute;top:14px;right:14px;width:32px;height:32px;background:rgba(0,0,0,0.35);border:none;border-radius:50%;color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2;backdrop-filter:blur(4px)}
+.popup-edit-btn{position:absolute;top:14px;left:14px;height:32px;padding:0 12px;background:var(--amber);border:none;border-radius:16px;color:#1a1a1a;font-size:12px;font-weight:700;font-family:var(--font-body);display:flex;align-items:center;gap:4px;cursor:pointer;z-index:3;box-shadow:0 2px 8px rgba(0,0,0,0.4)}
+.popup-edit-btn:active{background:var(--amber-dark)}
 
 /* Portrait hero image */
 #enc-hero-wrap{width:100%;padding:12px 16px 0;display:flex;justify-content:center}
@@ -581,6 +589,7 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
     <div id="enc-sheet">
       <div id="enc-handle"></div>
       <button id="enc-close" onclick="closeEncPopup()">✕</button>
+      <button id="enc-edit-btn" class="popup-edit-btn" onclick="editEncFromPopup()" style="display:none">✏️ Edit</button>
 
       <!-- Portrait image -->
       <div id="enc-hero-wrap">
@@ -1116,6 +1125,7 @@ body.invisible-pins .poi-pin::after{content:'';position:absolute;inset:-50%}
     <div id="poi-sheet">
       <div id="poi-handle"></div>
       <button id="poi-close" onclick="closePoiPopup()">✕</button>
+      <button id="poi-edit-btn" class="popup-edit-btn" onclick="editPoiFromPopup()" style="display:none">✏️ Edit</button>
       <div id="poi-body">
         <div id="poi-header">
           <div id="poi-icon"></div>
@@ -1759,10 +1769,19 @@ function handleImgTap(e){
 // ════════════════════════════════════════════════════════════════════
 // LEAFLET INIT & GPS MAP
 // ════════════════════════════════════════════════════════════════════
+// Declutter the GPS map as you zoom out: hide labels below z17, collapse
+// pins to small dots below z16.
+function updatePinDensity(){
+  const el=document.getElementById('leaflet-map'); if(!el||!lMap) return;
+  const z=lMap.getZoom();
+  el.classList.toggle('labels-min', z < 17);
+  el.classList.toggle('pins-min',   z < 16);
+}
 function initLeaflet(){
   const center=cfg.gpsCenter||[48.8566,2.3522];
   lMap=L.map('leaflet-map',{zoomControl:false}).setView(center,cfg.defaultZoom||17);
   lTile=makeTileLayer().addTo(lMap);
+  lMap.on('zoomend', updatePinDensity); updatePinDensity();
 
   // Click → place GPS pin (enclosure or POI)
   lMap.on('click',e=>{
@@ -2174,8 +2193,9 @@ function renderMapPins(){
   enclosures.forEach((enc,idx)=>{
     if(!enc.gps||!enc.gps[0]) return;
     const lbl=cfg.showLabels!==false
-      ?`<div style="position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,0.68);border-radius:4px;padding:1px 5px;white-space:nowrap;font-family:sans-serif">${encName(enc)}</div>`:'';
-    const icon=L.divIcon({html:`<div class="leaflet-pin-wrapper">${pinSvgGps(enc)}${lbl}</div>`,className:'',iconSize:[36,44],iconAnchor:[18,44]});
+      ?`<div class="gps-pin-label" style="position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,0.68);border-radius:4px;padding:1px 5px;white-space:nowrap;font-family:sans-serif">${encName(enc)}</div>`:'';
+    const dot=`<span class="gps-pin-dot" style="background:${encColor(enc)}"></span>`;
+    const icon=L.divIcon({html:`<div class="leaflet-pin-wrapper">${dot}${pinSvgGps(enc)}${lbl}</div>`,className:'',iconSize:[36,44],iconAnchor:[18,44]});
     const m=L.marker(enc.gps,{icon});
     if(cfg.showPins!==false) m.addTo(lMap);
     m.on('click',()=>{ if(!placingPin) openEncPopup(idx); });
@@ -3063,6 +3083,7 @@ function setText(id,val){ const el=document.getElementById(id); if(el) el.textCo
 function openEncPopup(idx){
   const enc=enclosures[idx]; if(!enc) return;
   _currentEncIdx = idx;
+  const eb=document.getElementById('enc-edit-btn'); if(eb) eb.style.display=isAdminMode?'flex':'none';
   const _routable = !!pnToPct(enc) && pnNet().nodes.length>1;
   const wb=document.getElementById('enc-walk-btn');
   if(wb){ wb.textContent='🧭 '+t('directions'); wb.classList.toggle('visible', _routable); }
@@ -3969,6 +3990,18 @@ function editEnclosure(idx){
   document.getElementById('enc-edit-form').classList.add('open');
 }
 
+// Admin shortcut: jump from a popup straight into editing that item
+function editEncFromPopup(){
+  const idx=_currentEncIdx; if(idx<0||idx>=enclosures.length) return;
+  closeEncPopup();
+  openSetup(); showSetupTab('enclosures'); editEnclosure(idx);
+}
+function editPoiFromPopup(){
+  const idx=_currentPoiIdx; if(idx<0||idx>=pois.length) return;
+  closePoiPopup();
+  openSetup(); showSetupTab('categories'); editPoi(idx);
+}
+
 function clearEncFormFields(){
   ['enc-form-id','enc-form-species','enc-form-emoji','enc-form-color','enc-form-px','enc-form-py','enc-form-gps','enc-form-adoption-link']
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
@@ -4587,8 +4620,9 @@ function renderPoiMapMarkers(){
     if(!poi.gps||!poi.gps[0]) return;
     const cat=getCatById(poi.categoryId);
     if(!isLayerVisible(poi.categoryId)) return;
-    const lbl=cfg.showLabels!==false?`<div style="position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,.68);border-radius:4px;padding:1px 5px;white-space:nowrap;font-family:sans-serif">${poiName(poi)}</div>`:'';
-    const icon=L.divIcon({html:`<div class="leaflet-pin-wrapper">${poiSvgGps(cat)}${lbl}</div>`,className:'',iconSize:[32,40],iconAnchor:[16,40]});
+    const lbl=cfg.showLabels!==false?`<div class="gps-pin-label" style="position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,.68);border-radius:4px;padding:1px 5px;white-space:nowrap;font-family:sans-serif">${poiName(poi)}</div>`:'';
+    const dot=`<span class="gps-pin-dot" style="background:${(cat&&cat.color)||'#4a9eff'}"></span>`;
+    const icon=L.divIcon({html:`<div class="leaflet-pin-wrapper">${dot}${poiSvgGps(cat)}${lbl}</div>`,className:'',iconSize:[32,40],iconAnchor:[16,40]});
     const m=L.marker(poi.gps,{icon});
     if(cfg.showPins!==false) m.addTo(lMap);
     m.on('click',()=>{ if(!placingPin&&!placingPoiPin) openPoiPopup(idx); });
@@ -4602,6 +4636,7 @@ function renderPoiMapMarkers(){
 function openPoiPopup(idx){
   const poi=pois[idx]; if(!poi) return;
   _currentPoiIdx = idx;
+  const eb=document.getElementById('poi-edit-btn'); if(eb) eb.style.display=isAdminMode?'flex':'none';
   const _routableP = !!pnToPct(poi) && pnNet().nodes.length>1;
   const wb=document.getElementById('poi-walk-btn');
   if(wb){ wb.textContent='🧭 '+t('directions'); wb.classList.toggle('visible', _routableP); }
@@ -4826,6 +4861,12 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:var(--font-body);ba
 .pin-label{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,.65);border-radius:4px;padding:1px 5px;white-space:nowrap;pointer-events:none}
 .map-pin.hidden-pin{opacity:0;pointer-events:none}
 .leaflet-pin-wrapper{position:relative;cursor:pointer}
+.gps-pin-dot{position:absolute;left:50%;bottom:0;transform:translate(-50%,50%);width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.55);display:none;pointer-events:none}
+/* Declutter when zoomed out: hide labels, then collapse pins to dots */
+#leaflet-map.labels-min .gps-pin-label{display:none}
+#leaflet-map.pins-min .leaflet-pin-wrapper>svg{display:none}
+#leaflet-map.pins-min .gps-pin-label{display:none}
+#leaflet-map.pins-min .gps-pin-dot{display:block}
 body.invisible-pins .map-pin svg{opacity:0;pointer-events:none}
 body.invisible-pins .map-pin .pin-label{display:none}
 body.invisible-pins .map-pin::after{content:'';position:absolute;top:-44px;left:-18px;width:36px;height:56px}
@@ -6351,6 +6392,12 @@ function updateUserDot(){
 }
 
 // ── Leaflet ──
+function updatePinDensity(){
+  const el=document.getElementById('leaflet-map'); if(!el||!lMap) return;
+  const z=lMap.getZoom();
+  el.classList.toggle('labels-min', z < 17);
+  el.classList.toggle('pins-min',   z < 16);
+}
 function initLeaflet(){
   lMap = L.map('leaflet-map', {
     center: cfg.gpsCenter || [50,14],
@@ -6359,6 +6406,7 @@ function initLeaflet(){
     attributionControl: true
   });
   lTile = makeTileLayer().addTo(lMap);
+  lMap.on('zoomend', updatePinDensity); updatePinDensity();
   applyOverlayToMap();
 }
 
@@ -6634,10 +6682,11 @@ function renderMapPins(){
   enclosures.forEach((enc,idx)=>{
     if(!enc.gps || !enc.gps[0]) return;
     const lbl = cfg.showLabels!==false
-      ? '<div style="position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,.68);border-radius:4px;padding:1px 5px;white-space:nowrap;font-family:sans-serif">' + encName(enc) + '</div>'
+      ? '<div class="gps-pin-label" style="position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,.68);border-radius:4px;padding:1px 5px;white-space:nowrap;font-family:sans-serif">' + encName(enc) + '</div>'
       : '';
+    const dot = '<span class="gps-pin-dot" style="background:' + encColor(enc) + '"></span>';
     const icon = L.divIcon({
-      html: '<div class="leaflet-pin-wrapper">' + pinSvgGps(enc) + lbl + '</div>',
+      html: '<div class="leaflet-pin-wrapper">' + dot + pinSvgGps(enc) + lbl + '</div>',
       className: '', iconSize: [36,44], iconAnchor: [18,44]
     });
     const m = L.marker(enc.gps, {icon});
@@ -6655,10 +6704,11 @@ function renderPoiMapMarkers(){
     if(!isLayerVisible(poi.categoryId)) return;
     const cat = getCatById(poi.categoryId);
     const lbl = cfg.showLabels!==false
-      ? '<div style="position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,.68);border-radius:4px;padding:1px 5px;white-space:nowrap;font-family:sans-serif">' + poiName(poi) + '</div>'
+      ? '<div class="gps-pin-label" style="position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:#fff;background:rgba(0,0,0,.68);border-radius:4px;padding:1px 5px;white-space:nowrap;font-family:sans-serif">' + poiName(poi) + '</div>'
       : '';
+    const dot = '<span class="gps-pin-dot" style="background:' + ((cat&&cat.color)||'#4a9eff') + '"></span>';
     const icon = L.divIcon({
-      html: '<div class="leaflet-pin-wrapper">' + poiSvgGps(cat) + lbl + '</div>',
+      html: '<div class="leaflet-pin-wrapper">' + dot + poiSvgGps(cat) + lbl + '</div>',
       className: '', iconSize: [32,40], iconAnchor: [16,40]
     });
     const m = L.marker(poi.gps, {icon});
