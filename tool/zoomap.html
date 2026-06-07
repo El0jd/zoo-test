@@ -1786,8 +1786,11 @@ function handleImgTap(e){
 function updatePinDensity(){
   const el=document.getElementById('leaflet-map'); if(!el||!lMap) return;
   const z=lMap.getZoom();
-  el.classList.toggle('labels-min', z < 17);
-  el.classList.toggle('pins-min',   z < 16);
+  // zoom >= 18 : teardrop + title
+  // zoom == 17 : teardrop only (title hidden)
+  // zoom <= 16 : small dot
+  el.classList.toggle('labels-min', z < 18);
+  el.classList.toggle('pins-min',   z < 17);
 }
 function initLeaflet(){
   const center=cfg.gpsCenter||[48.8566,2.3522];
@@ -6408,8 +6411,11 @@ function updateUserDot(){
 function updatePinDensity(){
   const el=document.getElementById('leaflet-map'); if(!el||!lMap) return;
   const z=lMap.getZoom();
-  el.classList.toggle('labels-min', z < 17);
-  el.classList.toggle('pins-min',   z < 16);
+  // zoom >= 18 : teardrop + title
+  // zoom == 17 : teardrop only (title hidden)
+  // zoom <= 16 : small dot
+  el.classList.toggle('labels-min', z < 18);
+  el.classList.toggle('pins-min',   z < 17);
 }
 function initLeaflet(){
   lMap = L.map('leaflet-map', {
